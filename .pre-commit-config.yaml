@@ -1,0 +1,66 @@
+# Manage and maintain pre-commit hooks
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+# General
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    # rev: v4.6.0
+    rev: 5c514f85cc9be49324a6e3664e891ac2fc8a8609
+    hooks:
+    -   id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+        args: ['--maxkb=10240']
+    -   id: detect-private-key
+  # Typos
+  # Error: Could not start dynamically linked executable:
+  # /home/nick/.cache/pre-commit/repo_xlk5h41/py_env-python3.12/bin/typos
+  # NixOS cannot run dynamically linked executables intended for generic
+  # linux environments out of the box. For more information, see:
+  # https://nix.dev/permalink/stub-ld
+# -   repo: https://github.com/crate-ci/typos
+#     # rev: v1.33.1
+#     rev: b1ae8d918b6e85bd611117d3d9a3be4f903ee5e4
+#     hooks:
+#     -   id: typos
+#         args: [ '--exclude "*.svg"', '--exclude "tests/"', '--exclude "web-snapshots"' ]
+
+# Markdown
+  # Linter
+-   repo: https://github.com/igorshubovych/markdownlint-cli
+    # rev: v0.45.0
+    rev: 192ad822316c3a22fb3d3cc8aa6eafa0b8488360
+    hooks:
+    - id: markdownlint-fix
+  # Table of contents
+-   repo: https://github.com/thlorenz/doctoc
+    # rev: v2.2.0
+    rev: 68f070c98b9a053eabfa7f8899d1f42b9919f98c
+    hooks:
+    -   id: doctoc
+
+# Python
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  # rev: v0.12.1
+  rev: 7445ed19e95ffaa6aad0d9bd4123025f7039511a
+  hooks:
+    # Run the linter.
+    - id: ruff-check
+      args: [ --fix ]
+    # Run the formatter.
+    - id: ruff-format
+
+# Bash
+-   repo: https://github.com/shellcheck-py/shellcheck-py
+    #rev: v0.10.0.1
+    rev: a23f6b85d0fdd5bb9d564e2579e678033debbdff
+    hooks:
+    -   id: shellcheck
+-   repo: https://github.com/nickpiaddo/shell-pre-commit-hooks
+    # rev: 3.0.0
+    rev: 38980559e3a605691d6579f96222c30778e5a69e
+    hooks:
+    -   id: shfmt
+    -   id: script-must-not-have-extension
