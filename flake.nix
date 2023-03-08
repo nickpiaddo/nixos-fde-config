@@ -40,6 +40,9 @@
             # Command runner
             just
 
+            # For unit and integration testing
+            nixos-generators
+
             # For code linting and formatting
             doctoc
             nodejs_20
