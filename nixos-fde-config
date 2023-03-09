@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# script:
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./script [options]' to enable tracing
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+################################################################################
+#                        GLOBAL VARIABLES
+############################################################################nϖ+o
+VERSION="##version##"
+REVISION="##revision##"
+
+################################################################################
+#                        HELPER FUNCTIONS
+################################################################################
+
+#### OUTPUT FORMATTING FUNCTIONS
+
+function formatText {
+  # escape character start
+  local on="$1"
+  # escape character end
+  local off="$2"
+  local text="$3"
+
+  echo -ne "${on}${text}${off}"
+}
+
+function bold { formatText "$(tput -T ansi bold)" "$(tput -T ansi sgr0)" "$1"; }
+function redbg { formatText "$(tput -T ansi setab 1)" "$(tput -T ansi sgr0)" "$1"; }
+function underline { formatText "$(tput -T ansi smul)" "$(tput -T ansi rmul)" "$1"; }
+function yellowbg { formatText "$(tput -T ansi setab 3)" "$(tput -T ansi sgr0)" "$1"; }
+
+function heading { printf "%s\n" "$(bold "$1") "; }
+
+function subheading { echo "> $1"; }
+
+#### MAIN HELPER FUNCTIONS
+
+######################################################################
+# Print version.
+# Arguments:
+#   None
+# Outputs:
+#   Command version
+######################################################################
+function printVersion {
+  echo "$(basename "$0") ${VERSION} ${REVISION}"
+}
+
+######################################################################
+# Print usage.
+# Arguments:
+#   None
+# Outputs:
+#   Usage instructions
+######################################################################
+function printUsage {
+  cat <<-END
+   $(bold "USAGE")
+
+       $(basename "$0") --help
+END
+}
+
+#### ERROR MANAGEMENT FUNCTIONS
+
+######################################################################
+# Print error message and terminate program.
+# Arguments:
+#   Error message
+# Outputs:
+#   Writes error message to stderr
+# Returns:
+#   Exit code 1
+######################################################################
+function error {
+  echo -e "$(redbg Error:) $*" >&2
+  exit 1
+}
+
+#### CONVERSION FUNCTIONS
+
+######################################################################
+# Convert a short option to its long version.
+# Arguments:
+#   Short option
+# Returns:
+#   Long version of the given short option
+#   Empty string otherwise
+######################################################################
+function toLongOption {
+  local short_option="$1"
+
+  case "${short_option}" in
+    '-y') echo '--version' ;;
+    *) echo "" ;;
+  esac
+}
+
+#### UTILITY FUNCTIONS
+
+######################################################################
+# Concatenate two strings separated by the given separator character
+# if the two strings are non-empty. Returns an empty string or whichever
+# of the two is non-empty otherwise.
+#
+# Examples:
+#
+#   concat ';' '' ''       --> ''
+#   concat ';' '' 'bar'    --> 'bar'
+#   concat ';' 'foo' ''    --> 'foo'
+#   concat ';' 'foo' 'bar' --> 'foo;bar'
+#
+# Arguments:
+#   Separator character
+#   First string
+#   Second string
+# Returns:
+#   Concatenated strings
+######################################################################
+function concat {
+  # No argument or just the separator
+  if [[ $# -eq 0 || $# -eq 1 ]]; then
+    echo ""
+  # Separator + one string
+  elif [[ $# -eq 2 ]]; then
+    echo -e "$2"
+  # Separator + two strings
+  else
+    local separator="$1"
+    local first="$2"
+    local second="$3"
+
+    # concat ';' '' ''
+    if [[ -z "${first}" && -z "${second}" ]]; then
+      echo ""
+    # concat ';' '' 'bar'
+    elif [[ -z "${first}" && -n "${second}" ]]; then
+      echo -e "${second}"
+    # concat ';' 'foo' ''
+    elif [[ -n "${first}" && -z "${second}" ]]; then
+      echo -e "${first}"
+    # concat ';' 'foo' 'bar'
+    else
+      echo -e "${first}${separator}${second}"
+    fi
+  fi
+}
+
+######################################################################
+# Find the option at the given index in the string.
+# Arguments:
+#   Index
+#   String
+# Returns:
+#   First option at index
+#   Empty string if there is none
+######################################################################
+function findOptionAt {
+  local index="$1"
+  local argument_list="$2"
+  echo "${argument_list}" | cut --delimiter=' ' --fields="${index}"
+}
+
+################################################################################
+#                        MAIN PROGRAM
+################################################################################
+
+if [[ $# -eq 0 ]]; then
+  printUsage
+  exit 1
+fi
+
+# From https://stackoverflow.com/a/30026641
+# Long option to short option substitution
+for arg in "$@"; do
+  shift
+  case "$arg" in
+    '--version') set -- "$@" '-y' ;;
+    *) set -- "$@" "$arg" ;;
+  esac
+done
+
+# Parse short option value
+OPTIND=1
+while getopts ":y" short_option; do
+  case "${short_option}" in
+    y)
+      printVersion
+      exit 0
+      ;;
+    :) error "option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
+    ?)
+      case "${OPTARG}" in
+        '-') INDEX=${OPTIND} ;;
+        *) INDEX=$((OPTIND - 1)) ;;
+      esac
+      error "unknown option: $(findOptionAt "${INDEX}" "${*}")"
+      ;;
+  esac
+done
+
+# Remove parsed options from script argument list
+shift $((OPTIND - 1))

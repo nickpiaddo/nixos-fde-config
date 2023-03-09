@@ -1,4 +1,6 @@
 alias ct := check-typos
+alias t   := test
+alias tu  := test-unit
 alias sv  := start-test-vm
 alias xv  := stop-test-vm
 alias clt := clean-test-vm
@@ -12,7 +14,7 @@ check-typos:
   @typos --exclude '*.svg' --exclude 'tests/test_helper' --exclude 'web-snapshots/'
 
 # Push commits to online repo
-do-push: check-typos
+do-push: check-typos test
   @git push origin main
 
 # Start the test virtual machine
@@ -39,3 +41,11 @@ clean-test-vm:
     subprocess.run(["rm", "-r", "-f", "area51/test-vm"])
   else:
     print("Aborted!")
+
+# Run all unit tests
+test:
+  @bats --timing --jobs 4 tests/on-install-iso
+
+# Only run tests that match the regular expression REGEX
+test-unit REGEX:
+  @bats --timing --jobs 4 --filter {{REGEX}} tests/on-install-iso

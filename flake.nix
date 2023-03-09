@@ -25,8 +25,7 @@
         # Generate a user-friendly version number.
         semver = "0.1.0";
         date = builtins.substring 0 8 lastModifiedDate;
-        revision = self.shortRev or "dirty";
-        pkgVersion = "${semver}-${date}.${revision}";
+        revision = self.shortRev or "none";
 
         # Nixpkgs instantiated for supported system types.
         pkgs = import nixpkgs { inherit system; };
@@ -81,6 +80,44 @@
           shellHook = ''
               ./scripts/init-repo-submodules
             '';
+        };
+
+        # 'nix build' binary output
+        packages = rec {
+          default = nixos-fde-config;
+          nixos-fde-config = pkgs.stdenv.mkDerivation rec {
+            pname = "nixos-fde-config";
+            version = "${semver}";
+            src = ./.;
+
+            dontUnpack = true;
+            dontPatch = true;
+            dontConfigure = true;
+            dontBuild = true;
+
+            installPhase =
+              ''
+                # Install script
+                mkdir -p $out/bin
+                cp $src/nixos-fde-config $out/bin/
+                chmod +x $out/bin/nixos-fde-config
+
+                # Set version string
+                sed -i s/##version##/v${version}/ $out/bin/nixos-fde-config
+                sed -i s/##revision##/rev#${revision}/ $out/bin/nixos-fde-config
+              '';
+          };
+        };
+
+        # Make it runnable with 'nix run'
+        apps = let
+          nixos-fde-config = {
+            type = "app";
+            program = "${self.packages."${system}".nixos-fde-config}/bin/nixos-fde-config";
+          };
+        in {
+          inherit nixos-fde-config;
+          default = nixos-fde-config;
         };
       });
 }
