@@ -43,6 +43,8 @@
             # For unit and integration testing
             nixos-generators
             OVMF
+            openssh
+            passh
             python313
             python313Packages.uv
             qemu

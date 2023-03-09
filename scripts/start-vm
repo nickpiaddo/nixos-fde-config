@@ -1,0 +1,123 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "typer",
+# ]
+# ///
+
+import subprocess
+import typer
+
+from pathlib import Path
+from rich import print
+from typing_extensions import Annotated
+
+app = typer.Typer(rich_markup_mode="markdown")
+
+@app.command()
+def main(vm_dir: Annotated[Path,
+                           typer.Argument(metavar="VM_DIR",
+                                          help="Specify the location of Virtual Machine files",
+                                          show_default=False,
+                                          exists=True,
+                                          file_okay=False,
+                                          dir_okay=True)],
+         monitor_port: Annotated[int,
+                           typer.Argument(metavar="MON_PORT",
+                                          help="Specify the telnet port of the Virtual Machine monitor",
+                                          show_default=False)],
+         ssh_port: Annotated[int,
+                           typer.Argument(metavar="SSH_PORT",
+                                          help="Specify the SSH port of the guest VM",
+                                          show_default=False)],
+         snapshot: Annotated[str,
+                           typer.Option("--load-snapshot",
+                                        "-l",
+                                        metavar="TAG_ID",
+                                        help="Specify the VM snapshot to load",
+                                        show_default=False)] = "",
+         graphic: Annotated[bool,
+                               typer.Option(help="Enable graphical output")] = True):
+    """
+    Start a virtual machine (VM) from the files in VM_DIR.
+
+    The virtual environment will simulate a machine with the following
+    components:
+
+
+      - a UEFI booting firmware
+
+
+      - a minimal NixOS install ISO
+
+
+      - a hard drive (to hold a full-disk encrypted system)
+
+
+      - a USB key (to hold a UEFI boot partition)
+
+    When the VM is powered on, it will try to boot from the devices listed below
+    (in order):
+
+
+      1. USB key
+
+
+      2. NixOS minimal ISO
+
+
+
+    The VM is started on the console (-nographic) with the VM monitor accessible
+    via a telnet server listening on MON_PORT.
+
+
+
+    Root access is available via SSH on localhost port SSH_PORT with the command:
+
+
+
+    $ passh -p '' ssh root@localhost -p SSH_PORT -t -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -oPasswordAuthentication=yes
+
+
+
+    Examples
+
+
+
+    $ start-vm vm/ 45454 2222 --load-snapshot basevm
+    """
+    print(f"Starting virtual machine at: {vm_dir}")
+    print(f"> QEMU monitor listening on port: {monitor_port}")
+    print(f"> SSH server listening on port: {ssh_port}")
+
+    args = ["qemu-system-x86_64",
+            "-monitor", f"telnet::{monitor_port},server,nowait",
+            "-enable-kvm",
+            #"-m", "size=256M,slots=16,maxmem=4G",
+            "-m", "4G",
+            "-nic", f"user,hostfwd=tcp::{ssh_port}-:22",
+            "-drive", f"if=pflash,format=qcow2,readonly=on,file={vm_dir}/OVMF_CODE.fd.qcow2",
+            "-drive", f"if=pflash,format=qcow2,file={vm_dir}/OVMF_VARS.fd.qcow2",
+            "-drive", f"if=none,id=cdrom,format=raw,readonly=on,file={vm_dir}/nixos-minimal-linux.iso",
+            "-device", "ide-cd,drive=cdrom,bootindex=2",
+            "-device", "nec-usb-xhci,id=xhci",
+            "-drive", f"if=none,id=bootkey,format=qcow2,file={vm_dir}/bootkey-3GB.qcow2",
+            "-device", "usb-storage,bus=xhci.0,drive=bootkey,bootindex=1",
+            "-drive", f"if=none,id=smallkey,format=qcow2,file={vm_dir}/smallkey-1GB.qcow2",
+            "-device", "usb-storage,bus=xhci.0,drive=smallkey",
+            "-drive", f"if=none,id=maindrive,format=qcow2,file={vm_dir}/fde-maindrive-32GB.qcow2",
+            "-device", "ide-hd,drive=maindrive"]
+
+    if snapshot:
+      args.append("-loadvm")
+      args.append(f"{snapshot}")
+
+    if not graphic:
+      args.append("-nographic")
+
+    with subprocess.Popen(args) as child_proc:
+      child_proc.wait()
+
+if __name__ == "__main__":
+    app()
