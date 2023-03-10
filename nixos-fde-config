@@ -250,6 +250,29 @@ function error {
   exit 1
 }
 
+######################################################################
+# Print recovery help message after script execution error.
+# Arguments:
+#   None
+# Outputs:
+#   A how-to-recover message on error
+# Returns:
+#   1
+######################################################################
+function messageOnAbort {
+  if [[ "$?" -ne 0 ]]; then
+    cat <<END
+
+$(redbg "An error occurred during execution. Aborting...")
+After resolving the issue, you can resume execution with the command:
+
+    $(basename "$0") --resume
+
+END
+    return 1
+  fi
+}
+
 #### CONVERSION FUNCTIONS
 
 ######################################################################
@@ -432,3 +455,5 @@ if [[ "${RESUME}" == "true" ]]; then
   loadCheckPoint
   heading "********** Resuming execution              **********"
 fi
+
+trap messageOnAbort EXIT
