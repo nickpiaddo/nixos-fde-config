@@ -273,6 +273,39 @@ END
   fi
 }
 
+######################################################################
+# Execute an error function if a predicate function returns false.
+# Arguments:
+#   Predicate function
+#   Argument of the predicate function
+#   Error function to execute if assertion is false
+#   Error message
+# Outputs:
+#   Nothing if the predicate is true. The error function's output
+#   otherwise.
+######################################################################
+function assert {
+  local pred_fun="$1"
+  local pred_arg="$2"
+  local error_fun="$3"
+  local error_arg="$4"
+
+  if ! $pred_fun "${pred_arg}"; then
+    $error_fun "${error_arg}"
+  fi
+}
+
+######################################################################
+# Print warning message.
+# Arguments:
+#   Warning message
+# Outputs:
+#   Writes warning message to stderr
+######################################################################
+function warn {
+  echo -e "$(yellowbg WARNING:) $1" >&2
+}
+
 #### CONVERSION FUNCTIONS
 
 ######################################################################
