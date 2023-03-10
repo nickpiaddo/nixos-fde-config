@@ -324,8 +324,66 @@ function toLongOption {
     '-h') echo '--help' ;;
     '-y') echo '--version' ;;
     '-z') echo '--resume' ;;
+    '-m') echo '--main-disk' ;;
     *) echo "" ;;
   esac
+}
+
+######################################################################
+# Extract integer prefix from a string.
+# Arguments:
+#   A string starting with an integer
+# Returns:
+#   The integer prefix of the string
+#   An empty string  if there is no prefix
+######################################################################
+function parseIntPrefix {
+  local string="$1"
+
+  if [[ "${string}" =~ ^[0-9]+ ]]; then
+    echo "${BASH_REMATCH[0]}"
+  fi
+}
+
+######################################################################
+# Convert a size denomination to its equivalent in bytes.
+# Arguments:
+#   Size with optional unit
+# Returns:
+#   Size in bytes
+######################################################################
+function toBytes {
+  local size="$1"
+
+  local one_KiB=1024
+  local one_MiB=$((1024 * one_KiB))
+  local one_GiB=$((1024 * one_MiB))
+  local one_TiB=$((1024 * one_GiB))
+
+  local size_in_bytes
+
+  # Kibibytes
+  if [[ "${size}" = *[kK] ]]; then
+    size_in_bytes=$(parseIntPrefix "${size}")
+    size_in_bytes=$((size_in_bytes * one_KiB))
+  # Mebibytes
+  elif [[ "${size}" = *M ]]; then
+    size_in_bytes=$(parseIntPrefix "${size}")
+    size_in_bytes=$((size_in_bytes * one_MiB))
+  # Gibibytes
+  elif [[ "${size}" = *G ]]; then
+    size_in_bytes=$(parseIntPrefix "${size}")
+    size_in_bytes=$((size_in_bytes * one_GiB))
+  # Tebibytes
+  elif [[ "${size}" = *T ]]; then
+    size_in_bytes=$(parseIntPrefix "${size}")
+    size_in_bytes=$((size_in_bytes * one_TiB))
+  # Bytes
+  else
+    size_in_bytes=${size}
+  fi
+
+  echo "${size_in_bytes}"
 }
 
 #### UTILITY FUNCTIONS
@@ -393,6 +451,22 @@ function findOptionAt {
   echo "${argument_list}" | cut --delimiter=' ' --fields="${index}"
 }
 
+######################################################################
+# Find a device mount points.
+# Arguments:
+#   Device path
+# Returns:
+#   A list of mount points
+#   Empty string if there are none
+######################################################################
+function findMountPoints {
+  local device="$1"
+  lsblk --noheadings --list --output MOUNTPOINTS "${device}" \
+    | sed '/^\s*$/d' \
+    | tr "\n" " " \
+    | sed 's/\s*$//'
+}
+
 #### STATE MANAGEMENT FUNCTIONS
 
 ######################################################################
@@ -439,7 +513,7 @@ function saveCheckPoint {
 #### PREDICATE FUNCTIONS
 
 ######################################################################
-# Test if unit tests are being run
+# Test if unit tests are being run.
 # Arguments:
 #   None
 # Returns:
@@ -447,6 +521,126 @@ function saveCheckPoint {
 #   False otherwise
 ######################################################################
 function isRunningUnitTest { [[ ${RUNNING_TEST} -eq 1 ]]; }
+
+######################################################################
+# Test if a device is a block device.
+# Arguments:
+#   Device path
+# Returns:
+#   True if the device is a block device
+#   False otherwise
+######################################################################
+function isBlockDevice { [[ -b "$1" ]]; }
+
+######################################################################
+# Test if the size of a device is at least n bytes.
+# Arguments:
+#   Minimum size in bytes
+#   Device path
+# Returns:
+#   True if the size of a device is at least n bytes
+#   False otherwise
+######################################################################
+function hasDeviceAtLeastNBytes {
+  local minimum="$1"
+  local device="$2"
+
+  local size
+  size=$(blockdev --getsize64 "${device}")
+
+  [[ ${size} -ge ${minimum} ]]
+}
+
+function hasDeviceAtLeast16GiB { hasDeviceAtLeastNBytes "$(toBytes 16G)" "$1"; }
+
+######################################################################
+# Test if a device is NOT mounted.
+# Arguments:
+#   Device path
+# Returns:
+#   True if the device NOT mounted
+#   False otherwise
+######################################################################
+function isNotMounted {
+  local device="$1"
+
+  local mount_points
+  mount_points="$(lsblk --list --noheadings --output MOUNTPOINTS "${device}")"
+  [[ -z "${mount_points}" ]]
+}
+
+######################################################################
+# Test if a variable is set.
+# Arguments:
+#   Variable value
+# Returns:
+#   True if variable is set
+#   False otherwise
+######################################################################
+function isSet { [[ -n "$1" ]]; }
+
+######################################################################
+# Test if a device path is not identical to the main disk's.
+# Arguments:
+#   Device path
+# Returns:
+#   True device paths differ
+#   False otherwise
+######################################################################
+function isNotMainDisk { [[ "${MAIN_DISK}" != "$1" ]]; }
+
+#### PARSER FUNCTIONS
+
+######################################################################
+# Run a parser on a command line option value.
+# Globals:
+#   OPTARG
+# Arguments:
+#   Parser function
+#   Command line option (short form)
+#   Previous raw option value
+# Outputs:
+#  An error if the option was redefined with a conflicting value.
+# Returns:
+#   A parsed option value.
+######################################################################
+function run {
+  local parserFunction="$1"
+  local short_option="$2"
+  local prev_value="$3"
+
+  case "${prev_value}" in
+    "" | "${OPTARG}") $parserFunction "${OPTARG}" ;;
+    *) error "option $(concat ', ' "-${short_option}" "$(toLongOption "-${short_option}")") redefined with conflicting values: '${prev_value}' vs '${OPTARG}'" ;;
+  esac
+}
+
+######################################################################
+# Parse main-disk option value.
+# Arguments:
+#   Device path
+# Returns:
+#   Normalized device path, if the device meets minimum requirements
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if minimum requirements are not met
+######################################################################
+function parseMaindisk {
+  local device_path="$1"
+
+  assert isBlockDevice "${device_path}" \
+    error "'${device_path}' is not a disk."
+  assert isNotMounted "${device_path}" \
+    error "'${device_path}' is currently mounted on mount point(s): $(findMountPoints "${device_path}") . \
+Please unmount them all and start again.
+If you see this message after a failed run, try the command:
+
+  $(basename "$0") --resume"
+  assert hasDeviceAtLeast16GiB "${device_path}" \
+    error "'${device_path}' must have at least 16GiB available."
+
+  realpath "${device_path}"
+}
 
 ################################################################################
 #                        MAIN PROGRAM
@@ -463,6 +657,7 @@ for arg in "$@"; do
   shift
   case "$arg" in
     '--help') set -- "$@" '-h' ;;
+    '--main-disk') set -- "$@" '-m' ;;
     '--resume') set -- "$@" '-z' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
@@ -471,12 +666,13 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":htyz" short_option; do
+while getopts ":hm:tyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
       exit 0
       ;;
+    m) MAIN_DISK="$(run parseMaindisk "${short_option}" "${MAIN_DISK}")" ;;
     t) RUNNING_TEST=1 ;;
     y)
       printVersion
@@ -511,6 +707,10 @@ if [[ "${RESUME}" == "true" ]]; then
   loadCheckPoint
   heading "********** Resuming execution              **********"
 fi
+
+# Check that required global variables are set
+assert isSet "${MAIN_DISK}" \
+  error "the option '-m, --main-disk' is required."
 
 # Stop script execution beyond this point and signal success
 if isRunningUnitTest; then
