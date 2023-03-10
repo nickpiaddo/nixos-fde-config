@@ -126,6 +126,99 @@ function printUsage {
 END
 }
 
+######################################################################
+# Print help page.
+# Arguments:
+#   None
+# Outputs:
+#   Usage manual
+######################################################################
+function printHelp {
+  cat <<-END
+   $(bold USAGE)
+
+       $(basename "$0") -m DEVPATH -b DEVPATH -R SIZE -S SIZE [-H SIZE]
+                        [--skip-wipe-disks]
+
+       $(basename "$0") --help
+
+       $(basename "$0") --version
+
+   $(bold EXAMPLES)
+
+       Configure a system with a bootkey at /dev/sdb, a main disk at /dev/sda
+       with a 16G root partition, 8G of swap, and a 64G /home partition.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 64G
+
+       By default, not specifying the size of the home partition will allocate
+       all remaining free space to it. In the example below, the home partition
+       will have size home_size = disk_size - (root_size + swap_size).
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G
+
+       If you do not want a dedicated partition for the /home directory, set
+       its size to zero.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 0
+
+      Equally, if you want a system without a swap partition set its value to
+      zero.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 0 -H 0
+
+   $(bold DESCRIPTION)
+
+       $(basename "$0") is a setup script for configuring a NixOS system with
+       full disk encryption.
+
+       It creates a LUKS2 encrypted container on the given main disk, then adds
+       up to three ext4-formatted LVM volumes (root, swap, home).
+
+       The LUKS2 container's header-file, along with a decryption key-file are
+       added as a compressed, passphrase-protected archive to a UEFI boot
+       partition on the USB boot key.
+
+       After a successful setup, the boot key is required to boot the system.
+       You will also need to provide your passphrase to mount the filesystem.
+
+       $(bold Note:) When sizing your partitions, take into account that $(bold 16MiB)
+             are reserved on the main disk for GPT and LVM metadata.
+
+   $(bold OPTIONS)
+
+       -h, --help               Display this help and exit.
+       --version                Print script version string.
+
+       -m, --main-disk DEVPATH  Specify where to install NixOS.
+       -b, --boot-key  DEVPATH  Specify where to put the boot partition.
+       -R, --root-size SIZE     Specify the root partition size.
+       -S, --swap-size SIZE     Specify the swap partition size.
+       -H, --home-size SIZE     Specify the home partition size. (Optional)
+                                (default: remaining free space after root
+                                 and swap partitions)
+
+       --skip-wipe-disks        Skip wiping disks with random data before
+                                formatting.
+
+                                Wiping a disk with random data, before creating
+                                the LUKS container, helps hide the size of the
+                                encrypted content and gives you plausible
+                                deniability about its very existence.
+                                $(bold "Use this option at your own risk!")
+
+       Command parameters:
+
+       DEVPATH the absolute path to a disk (e.g. /dev/sda).
+
+       SIZE the integer partition size in bytes. Must be at least 8GiB for the
+       root partition. Otherwise, either 0 or at least 4MiB.
+
+       Optional suffixes k or K (kibibyte, 1024 bytes), M (mebibyte, 1024k),
+       G (gibibyte, 1024M), and T (tebibyte, 1024G) are supported.
+END
+}
+
 #### ERROR MANAGEMENT FUNCTIONS
 
 ######################################################################
@@ -156,6 +249,7 @@ function toLongOption {
   local short_option="$1"
 
   case "${short_option}" in
+    '-h') echo '--help' ;;
     '-y') echo '--version' ;;
     *) echo "" ;;
   esac
@@ -240,6 +334,7 @@ fi
 for arg in "$@"; do
   shift
   case "$arg" in
+    '--help') set -- "$@" '-h' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
   esac
@@ -247,8 +342,12 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":y" short_option; do
+while getopts ":hy" short_option; do
   case "${short_option}" in
+    h)
+      printHelp
+      exit 0
+      ;;
     y)
       printVersion
       exit 0
