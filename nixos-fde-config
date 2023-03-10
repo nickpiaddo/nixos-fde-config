@@ -44,6 +44,15 @@ fi
 ############################################################################nϖ+o
 VERSION="##version##"
 REVISION="##revision##"
+TMP_FILE="/root/.fde-config"
+MAIN_DISK=""
+BOOT_KEY=""
+ROOT_SIZE=""
+SWAP_SIZE=""
+HOME_SIZE=""
+WIPE_DISKS=true
+RESUME=false
+CHECKPOINT_ID=""
 
 ################################################################################
 #                        HELPER FUNCTIONS
@@ -99,6 +108,8 @@ function printUsage {
 
        $(basename "$0") --help
 
+       $(basename "$0") --resume
+
        $(basename "$0") --version
 
    $(bold EXAMPLES)
@@ -142,6 +153,8 @@ function printHelp {
 
        $(basename "$0") --help
 
+       $(basename "$0") --resume
+
        $(basename "$0") --version
 
    $(bold EXAMPLES)
@@ -177,9 +190,9 @@ function printHelp {
 
        The LUKS2 container's header-file, along with a decryption key-file are
        added as a compressed, passphrase-protected archive to a UEFI boot
-       partition on the USB boot key.
+       partition on the USB bootkey.
 
-       After a successful setup, the boot key is required to boot the system.
+       After a successful setup, the bootkey is required to boot the system.
        You will also need to provide your passphrase to mount the filesystem.
 
        $(bold Note:) When sizing your partitions, take into account that $(bold 16MiB)
@@ -188,6 +201,8 @@ function printHelp {
    $(bold OPTIONS)
 
        -h, --help               Display this help and exit.
+       -z, --resume             Resume execution from the last successful step
+                                before interruption.
        --version                Print script version string.
 
        -m, --main-disk DEVPATH  Specify where to install NixOS.
@@ -251,6 +266,7 @@ function toLongOption {
   case "${short_option}" in
     '-h') echo '--help' ;;
     '-y') echo '--version' ;;
+    '-z') echo '--resume' ;;
     *) echo "" ;;
   esac
 }
@@ -320,6 +336,49 @@ function findOptionAt {
   echo "${argument_list}" | cut --delimiter=' ' --fields="${index}"
 }
 
+#### STATE MANAGEMENT FUNCTIONS
+
+######################################################################
+# Load saved global options variables from disk.
+# Globals:
+#   MAIN_DISK
+#   BOOT_KEY
+#   ROOT_SIZE
+#   SWAP_SIZE
+#   HOME_SIZE
+#   WIPE_DISKS
+#   CHECKPOINT_ID
+# Arguments:
+#   None
+# Returns:
+#   Options variables set to their last saved state
+######################################################################
+function loadCheckPoint {
+  read -r MAIN_DISK BOOT_KEY ROOT_SIZE SWAP_SIZE \
+    HOME_SIZE WIPE_DISKS CHECKPOINT_ID <<<"$(<${TMP_FILE})"
+}
+
+######################################################################
+# Save global options variables to disk.
+# Globals:
+#   MAIN_DISK
+#   BOOT_KEY
+#   ROOT_SIZE
+#   SWAP_SIZE
+#   HOME_SIZE
+#   WIPE_DISKS
+#   CHECKPOINT_ID
+# Arguments:
+#   Check point identifier
+# Outputs:
+#  Global options variables to disk
+######################################################################
+function saveCheckPoint {
+  CHECKPOINT_ID="$1"
+  echo -n "${MAIN_DISK} ${BOOT_KEY} ${ROOT_SIZE} ${SWAP_SIZE} \
+    ${HOME_SIZE} ${WIPE_DISKS} ${CHECKPOINT_ID}" >|"${TMP_FILE}"
+}
+
 ################################################################################
 #                        MAIN PROGRAM
 ################################################################################
@@ -335,6 +394,7 @@ for arg in "$@"; do
   shift
   case "$arg" in
     '--help') set -- "$@" '-h' ;;
+    '--resume') set -- "$@" '-z' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
   esac
@@ -342,7 +402,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hy" short_option; do
+while getopts ":hyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -352,6 +412,7 @@ while getopts ":hy" short_option; do
       printVersion
       exit 0
       ;;
+    z) RESUME=true ;;
     :) error "option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
     ?)
       case "${OPTARG}" in
@@ -365,3 +426,9 @@ done
 
 # Remove parsed options from script argument list
 shift $((OPTIND - 1))
+
+if [[ "${RESUME}" == "true" ]]; then
+  # Restore global options variables to their last saved state
+  loadCheckPoint
+  heading "********** Resuming execution              **********"
+fi
