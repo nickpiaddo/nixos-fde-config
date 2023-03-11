@@ -1046,6 +1046,16 @@ if [[ "${RESUME}" == false ]]; then
     confirmContinue "no space allocated for SWAP."
   assert isNotZero "${HOME_SIZE}" \
     confirmContinue "no space allocated for the home partition."
+
+  # Check that partition sizes are consistent with total available empty space
+  TOTAL_INSTALL_SIZE=$((METADATA + ROOT_SIZE + SWAP_SIZE + HOME_SIZE))
+
+  function mainDiskCanContainPartitions { [[ $1 -le ${MAIN_DISK_SIZE} ]]; }
+
+  assert mainDiskCanContainPartitions "${TOTAL_INSTALL_SIZE}" \
+    error \
+    "not enough empty space to store metadata and partitions.
+       Need at least $(byteToString "${TOTAL_INSTALL_SIZE}"), but has only $(byteToString "${MAIN_DISK_SIZE}") available. Remember that 16MiB are reserved for storing metadata."
 fi
 
 # Stop script execution beyond this point and signal success
