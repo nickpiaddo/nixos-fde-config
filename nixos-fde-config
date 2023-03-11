@@ -963,6 +963,19 @@ function isInteger { [[ "$1" =~ ^[0-9]+$ ]]; }
 ######################################################################
 function isEmpty { [[ -z "$1" ]]; }
 
+######################################################################
+# Test if the machine the script is running on is connected to the
+# internet
+# Arguments:
+#   None
+# Returns:
+#   True if there is an active internet connection
+#   False otherwise
+######################################################################
+function hasInternetAccess {
+  ping -qc 3 www.google.com >/dev/null 2>&1
+}
+
 #### PARSER FUNCTIONS
 
 ######################################################################
@@ -1288,3 +1301,21 @@ if isRunningUnitTest; then
 fi
 
 trap messageOnAbort EXIT
+
+if [[ -z "${CHECKPOINT_ID}" ]]; then
+  heading "Setting Up Installation Tools..."
+
+  subheading "Checking internet connection..."
+  assert hasInternetAccess "" \
+    error \
+    "unable to reach the internet.
+       For more information about how to configure your network interface,
+       please consult the NixOS manual at:
+       https://nixos.org/manual/nixos/stable/#sec-installation-manual-networking"
+
+  subheading "Installing software dependencies..."
+  nix-env -iA age -f https://github.com/NixOS/nixpkgs/archive/1732ee9120e43c1df33a33004315741d0173d0b2.tar.gz
+  nix-env -iA b3sum -f https://github.com/NixOS/nixpkgs/archive/1732ee9120e43c1df33a33004315741d0173d0b2.tar.gz
+  nix-env -iA pv -f https://github.com/NixOS/nixpkgs/archive/1732ee9120e43c1df33a33004315741d0173d0b2.tar.gz
+  saveCheckPoint tools-installed
+fi
