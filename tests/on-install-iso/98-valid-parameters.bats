@@ -11,7 +11,25 @@ setup() {
   run bash -c "${SSH} /root/nixos-fde-config -t \
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
-    --root-size 16G"
+    --root-size 16G \
+    --swap-size 4G"
 
+  assert_success
+}
+
+@test "Running nixos-fde-config with valid parameters and no swap succeeds" {
+  run expect -c \
+    "spawn ${EXP_SSH} /root/nixos-fde-config -t \
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb \
+    --root-size 16G \
+    --swap-size 0G
+
+    expect \"Would you like to continue? \[y/N] \"
+    send -- \"y\r\"
+    expect eof
+    exit" 3>&-
+
+  assert_line --partial "no space allocated for SWAP."
   assert_success
 }

@@ -29,13 +29,13 @@ setup() {
 }
 
 @test "A  REDEFINED short main-disk option with the SAME VALUE is ignored" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sda"
+  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sda -S 4G"
 
   assert_success
 }
 
 @test "A  REDEFINED short main-disk option with CONFLICTING VALUES triggers an error" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sdb"
+  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sdb -S 4G"
 
   assert_failure 1
   assert_line --partial "redefined with conflicting values: '/dev/sda' vs '/dev/sdb'"
@@ -67,7 +67,8 @@ setup() {
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
     --root-size 16G \
-    --main-disk /dev/sda"
+    --main-disk /dev/sda \
+    --swap-size 4G"
 
   assert_success
 }

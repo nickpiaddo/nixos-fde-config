@@ -47,6 +47,9 @@ setup_suite() {
   # For running command on the VM
   export SSH="passh -p '' ssh root@localhost -p ${SSH_PORT} -t ${SSH_OPTIONS}"
 
+  # For running command on the VM through expect
+  export EXP_SSH="passh -p {} ssh root@localhost -p ${SSH_PORT} -t ${SSH_OPTIONS}"
+
   # For copying files to the VM
   SCP="passh -p '' scp -P ${SSH_PORT} ${SSH_OPTIONS}"
 
