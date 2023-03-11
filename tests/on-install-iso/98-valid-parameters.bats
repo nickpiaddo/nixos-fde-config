@@ -9,7 +9,8 @@ setup() {
 
 @test "Running nixos-fde-config with valid parameters succeeds" {
   run bash -c "${SSH} /root/nixos-fde-config -t \
-    --main-disk /dev/sda"
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb"
 
   assert_success
 }

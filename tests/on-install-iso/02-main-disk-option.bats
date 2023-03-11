@@ -7,6 +7,13 @@ setup() {
   load "${TEST_DIR}/test_helper/bats-support/load"
 }
 
+@test "A  MISSING   short main-disk OPTION triggers an error" {
+  run bash -c "${SSH} /root/nixos-fde-config -t -b /dev/sdb"
+
+  assert_failure 1
+  assert_line --partial "the option '-m, --main-disk' is required."
+}
+
 @test "A  MISSING   short main-disk option VALUE triggers an error" {
   run bash -c "${SSH} /root/nixos-fde-config -t -m"
 
@@ -22,16 +29,23 @@ setup() {
 }
 
 @test "A  REDEFINED short main-disk option with the SAME VALUE is ignored" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -m /dev/sda"
+  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -m /dev/sda"
 
   assert_success
 }
 
 @test "A  REDEFINED short main-disk option with CONFLICTING VALUES triggers an error" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -m /dev/sdb"
+  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -m /dev/sdb"
 
   assert_failure 1
   assert_line --partial "redefined with conflicting values: '/dev/sda' vs '/dev/sdb'"
+}
+
+@test "A  MISSING long  main-disk OPTION triggers an error" {
+  run bash -c "${SSH} /root/nixos-fde-config -t --boot-key /dev/sdb"
+
+  assert_failure 1
+  assert_line --partial "the option '-m, --main-disk' is required."
 }
 
 @test "A  MISSING   long  main-disk option VALUE triggers an error" {
@@ -51,6 +65,7 @@ setup() {
 @test "A  REDEFINED long main-disk option with the SAME VALUE is ignored" {
   run bash -c "${SSH} /root/nixos-fde-config -t \
     --main-disk /dev/sda \
+    --boot-key /dev/sdb \
     --main-disk /dev/sda"
 
   assert_success
@@ -59,6 +74,7 @@ setup() {
 @test "A  REDEFINED long main-disk option with CONFLICTING VALUES triggers an error" {
   run bash -c "${SSH} /root/nixos-fde-config -t \
     --main-disk /dev/sda \
+    --boot-key /dev/sdb \
     --main-disk /dev/sdb"
 
   assert_failure 1
