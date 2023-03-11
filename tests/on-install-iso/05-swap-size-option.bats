@@ -29,7 +29,7 @@ setup() {
 }
 
 @test "A  REDEFINED short swap-size option with the SAME VALUE is ignored" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -S 4G -m /dev/sda -b /dev/sdb -R 8G -S 4G"
+  run bash -c "${SSH} /root/nixos-fde-config -t -S 4G -m /dev/sda -b /dev/sdb -R 8G -S 4G -H 8G"
 
   assert_success
 }
@@ -73,6 +73,7 @@ setup() {
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
     --root-size 16G \
+    --home-size 8G \
     --swap-size 4G"
 
   assert_success
@@ -84,6 +85,7 @@ setup() {
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
     --root-size 16G \
+    --home-size 8G \
     --swap-size 8G"
 
   assert_failure 1

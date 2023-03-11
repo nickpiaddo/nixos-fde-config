@@ -12,7 +12,8 @@ setup() {
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
     --root-size 16G \
-    --swap-size 4G"
+    --swap-size 4G \
+    --home-size 8G"
 
   assert_success
 }
@@ -23,7 +24,7 @@ setup() {
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
     --root-size 16G \
-    --swap-size 0G
+    --swap-size 0
 
     expect \"Would you like to continue? \[y/N] \"
     send -- \"y\r\"
@@ -31,5 +32,45 @@ setup() {
     exit" 3>&-
 
   assert_line --partial "no space allocated for SWAP."
+  assert_success
+}
+
+@test "Running nixos-fde-config with valid parameters and no home partition succeeds" {
+  run expect -c \
+    "spawn ${EXP_SSH} /root/nixos-fde-config -t \
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb \
+    --root-size 16G \
+    --swap-size 4G \
+    --home-size 0
+
+    expect \"Would you like to continue? \[y/N] \"
+    send -- \"y\r\"
+    expect eof
+    exit" 3>&-
+
+  assert_line --partial "no space allocated for the home partition."
+  assert_success
+}
+
+@test "Running nixos-fde-config with valid parameters, no swap, and no home partition succeeds" {
+  run expect -c \
+    "spawn ${EXP_SSH} /root/nixos-fde-config -t \
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb \
+    --root-size 16G \
+    --swap-size 0 \
+    --home-size 0
+
+    expect \"Would you like to continue? \[y/N] \"
+    send -- \"y\r\"
+    expect \"Would you like to continue? \[y/N] \"
+    send -- \"y\r\"
+    expect eof
+    exit" 3>&-
+
+  assert_line --partial "no space allocated for SWAP."
+  assert_line --partial "no space allocated for the home partition."
+
   assert_success
 }

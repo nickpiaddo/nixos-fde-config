@@ -51,6 +51,7 @@ RAW_ROOT_SIZE=""
 ROOT_SIZE=""
 RAW_SWAP_SIZE=""
 SWAP_SIZE=""
+RAW_HOME_SIZE=""
 HOME_SIZE=""
 WIPE_DISKS=true
 RESUME=false
@@ -351,6 +352,7 @@ function toLongOption {
     '-b') echo '--boot-key' ;;
     '-R') echo '--root-size' ;;
     '-S') echo '--swap-size' ;;
+    '-H') echo '--home-size' ;;
     *) echo "" ;;
   esac
 }
@@ -491,6 +493,93 @@ function findMountPoints {
     | sed '/^\s*$/d' \
     | tr "\n" " " \
     | sed 's/\s*$//'
+}
+
+######################################################################
+# Divide two integers, then truncate the result after the first
+# non-zero decimal digit
+# Arguments:
+#   Numerator
+#   Denominator
+# Returns:
+#   The ratio of numerator to denominator truncated after
+#   the first non-zero decimal digit
+######################################################################
+function truncDivide {
+  local numerator="$1"
+  local denominator="$2"
+
+  local ratio
+  ratio=$(awk "BEGIN {print ${numerator} / ${denominator}}")
+  if isInteger "${ratio}"; then
+    echo "${ratio}"
+  else
+    local integer_part
+    local fractional_part
+    local index_first_non_zero=0
+
+    integer_part=$(echo "${ratio}" | cut -d'.' -f1)
+    fractional_part=$(echo "${ratio}" | cut -d'.' -f2)
+
+    for ((i = 0; i < ${#fractional_part}; i++)); do
+      if [[ "${fractional_part:$i:1}" != "0" ]]; then
+        index_first_non_zero=$i
+        break
+      fi
+    done
+
+    local end=$((index_first_non_zero + 1))
+    echo "${integer_part}.${fractional_part:0:$end}"
+  fi
+
+}
+
+######################################################################
+# Convert size in bytes to their closest unit multiple.
+# Arguments:
+#   An integer
+# Returns:
+#   The size with its appropriate unit (KiB, MiB,...)
+######################################################################
+function byteToString {
+  local size_in_bytes="$1"
+
+  local one_KiB=1024
+  local metric_prefix="KMGTPEZYRQ"
+
+  local power
+  local unit
+  local ratio
+
+  if [[ ${size_in_bytes} -lt ${one_KiB} ]]; then
+    unit="b"
+    ratio=${size_in_bytes}
+  else
+    power=$(awk "BEGIN { print int(log(${size_in_bytes}) / log(${one_KiB})) }")
+    unit="$(printf "%s%s" "${metric_prefix:((power - 1)):1}" "iB")"
+    ratio=$(truncDivide "${size_in_bytes}" "$((one_KiB ** power))")
+  fi
+
+  echo "${ratio}${unit}"
+}
+
+######################################################################
+# Largest of two integers.
+# Arguments:
+#   First integer
+#   Second integer
+# Returns:
+#   Largest integer value
+######################################################################
+function max {
+  local first="$1"
+  local second="$2"
+
+  if [[ "${first}" -gt "${second}" ]]; then
+    echo "${first}"
+  else
+    echo "${second}"
+  fi
 }
 
 #### STATE MANAGEMENT FUNCTIONS
@@ -664,6 +753,16 @@ function isZeroOrAtLeast4MiB { [[ $1 -eq 0 || $1 -ge $(toBytes 4M) ]]; }
 ######################################################################
 function isNotZero { [[ "$1" -ne 0 ]]; }
 
+######################################################################
+# Test if a number is an integer
+# Arguments:
+#   Number
+# Returns:
+#   True if the number an integer
+#   False otherwise
+######################################################################
+function isInteger { [[ "$1" =~ ^[0-9]+$ ]]; }
+
 #### PARSER FUNCTIONS
 
 ######################################################################
@@ -792,6 +891,30 @@ function parseSwapSize {
   echo "${size_in_bytes}"
 }
 
+######################################################################
+# Parse home-size option value.
+# Arguments:
+#   Partition size
+# Returns:
+#   Size in bytes, if the partition size meets minimum requirements
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if minimum requirements are not met
+######################################################################
+function parseHomeSize {
+  local size="$1"
+  local size_in_bytes
+
+  assert isValidSize "${size}" \
+    error "Specified invalid partition size: ${size}."
+
+  size_in_bytes=$(toBytes "${size}")
+  assert isZeroOrAtLeast4MiB "${size_in_bytes}" \
+    error "Home partition size must be either 0 or at least 4MiB."
+
+  echo "${size_in_bytes}"
+}
+
 ################################################################################
 #                        MAIN PROGRAM
 ################################################################################
@@ -812,6 +935,7 @@ for arg in "$@"; do
     '--resume') set -- "$@" '-z' ;;
     '--root-size') set -- "$@" '-R' ;;
     '--swap-size') set -- "$@" '-S' ;;
+    '--home-size') set -- "$@" '-H' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
   esac
@@ -819,7 +943,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:R:S:tyz" short_option; do
+while getopts ":hm:b:R:S:H:tyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -834,6 +958,10 @@ while getopts ":hm:b:R:S:tyz" short_option; do
     S)
       SWAP_SIZE="$(run parseSwapSize "${short_option}" "${RAW_SWAP_SIZE}")"
       RAW_SWAP_SIZE="${OPTARG}"
+      ;;
+    H)
+      HOME_SIZE="$(run parseHomeSize "${short_option}" "${RAW_HOME_SIZE}")"
+      RAW_HOME_SIZE="${OPTARG}"
       ;;
     t) RUNNING_TEST=1 ;;
     y)
@@ -884,10 +1012,37 @@ assert isSet "${SWAP_SIZE}" \
 assert isNotMainDisk "${BOOT_KEY}" \
   error "options main-disk and boot-key refer to the same device: ${BOOT_KEY}"
 
+MAIN_DISK_SIZE=$(blockdev --getsize64 "${MAIN_DISK}")
+# Reserve 16MiB for the partition table and LVM header
+METADATA=$(toBytes 16M)
+
+if ! isSet "${HOME_SIZE}"; then
+  EMPTY_SPACE=$((MAIN_DISK_SIZE - METADATA - ROOT_SIZE - SWAP_SIZE))
+  EMPTY_SPACE=$(max 0 "${EMPTY_SPACE}")
+
+  HOME_SIZE=0
+
+  if [[ ${EMPTY_SPACE} -ne 0 ]]; then
+    assert isZeroOrAtLeast4MiB "${EMPTY_SPACE}" \
+      error "there is only $(byteToString "${EMPTY_SPACE}") available. Home partition size must be either 0 or at least 4MiB."
+
+    read -r -p \
+      "Would you like to allocate the remaining $(byteToString "${EMPTY_SPACE}") to the home partition? [y/N] " \
+      REPLY
+
+    # Assign remaining empty space minus a 16MiB metadata buffer to the home partition
+    if [[ "${REPLY}" == y ]]; then
+      HOME_SIZE=${EMPTY_SPACE}
+    fi
+  fi
+fi
+
 if [[ "${RESUME}" == false ]]; then
   # Warn about zero-sized partitions and ask for confirmation
   assert isNotZero "${SWAP_SIZE}" \
     confirmContinue "no space allocated for SWAP."
+  assert isNotZero "${HOME_SIZE}" \
+    confirmContinue "no space allocated for the home partition."
 fi
 
 # Stop script execution beyond this point and signal success

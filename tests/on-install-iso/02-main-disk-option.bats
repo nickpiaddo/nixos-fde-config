@@ -29,7 +29,7 @@ setup() {
 }
 
 @test "A  REDEFINED short main-disk option with the SAME VALUE is ignored" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sda -S 4G"
+  run bash -c "${SSH} /root/nixos-fde-config -t -m /dev/sda -b /dev/sdb -R 16G -m /dev/sda -S 4G -H 8G"
 
   assert_success
 }
@@ -68,7 +68,8 @@ setup() {
     --boot-key /dev/sdb \
     --root-size 16G \
     --main-disk /dev/sda \
-    --swap-size 4G"
+    --swap-size 4G \
+    --home-size 8G"
 
   assert_success
 }
