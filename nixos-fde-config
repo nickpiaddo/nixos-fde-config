@@ -47,6 +47,7 @@ REVISION="##revision##"
 TMP_FILE="/root/.fde-config"
 MAIN_DISK=""
 BOOT_KEY=""
+RAW_ROOT_SIZE=""
 ROOT_SIZE=""
 SWAP_SIZE=""
 HOME_SIZE=""
@@ -326,6 +327,7 @@ function toLongOption {
     '-z') echo '--resume' ;;
     '-m') echo '--main-disk' ;;
     '-b') echo '--boot-key' ;;
+    '-R') echo '--root-size' ;;
     *) echo "" ;;
   esac
 }
@@ -591,6 +593,34 @@ function isSet { [[ -n "$1" ]]; }
 ######################################################################
 function isNotMainDisk { [[ "${MAIN_DISK}" != "$1" ]]; }
 
+######################################################################
+# Test if the size is at least as large as the given lower limit.
+# Arguments:
+#   Lower limit in bytes
+#   Size in bytes
+# Returns:
+#   True if the size is greater than or equal to a lower limit
+#   False otherwise
+######################################################################
+function isAtLeastNBytes {
+  local lower_limit="$1"
+  local size_in_bytes="$2"
+
+  [[ ${size_in_bytes} -ge ${lower_limit} ]]
+}
+
+function isAtLeast8GiB { isAtLeastNBytes "$(toBytes 8G)" "$1"; }
+
+######################################################################
+# Test if an expression of size is well formed.
+# Arguments:
+#   Size in with optional unit
+# Returns:
+#   True if the size is well formed
+#   False otherwise
+######################################################################
+function isValidSize { [[ "$1" =~ (^[0-9]+$)|(^[0-9]+[kKMGT]$) ]]; }
+
 #### PARSER FUNCTIONS
 
 ######################################################################
@@ -671,6 +701,30 @@ If you see this message after a failed run, try the command:
   realpath "${device_path}"
 }
 
+######################################################################
+# Parse root-size option value.
+# Arguments:
+#   Partition size
+# Returns:
+#   Size in bytes, if the partition size meets minimum requirements
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if minimum requirements are not met
+######################################################################
+function parseRootSize {
+  local size="$1"
+  local size_in_bytes
+
+  assert isValidSize "${size}" \
+    error "Specified invalid partition size: ${size}."
+
+  size_in_bytes=$(toBytes "${size}")
+  assert isAtLeast8GiB "${size_in_bytes}" \
+    error "A root partition must have at least 8GiB available. Please allocate more space."
+
+  echo "${size_in_bytes}"
+}
+
 ################################################################################
 #                        MAIN PROGRAM
 ################################################################################
@@ -689,6 +743,7 @@ for arg in "$@"; do
     '--boot-key') set -- "$@" '-b' ;;
     '--main-disk') set -- "$@" '-m' ;;
     '--resume') set -- "$@" '-z' ;;
+    '--root-size') set -- "$@" '-R' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
   esac
@@ -696,7 +751,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:tyz" short_option; do
+while getopts ":hm:b:R:tyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -704,6 +759,10 @@ while getopts ":hm:b:tyz" short_option; do
       ;;
     m) MAIN_DISK="$(run parseMaindisk "${short_option}" "${MAIN_DISK}")" ;;
     b) BOOT_KEY="$(run parseBootkey "${short_option}" "${BOOT_KEY}")" ;;
+    R)
+      ROOT_SIZE="$(run parseRootSize "${short_option}" "${RAW_ROOT_SIZE}")"
+      RAW_ROOT_SIZE="${OPTARG}"
+      ;;
     t) RUNNING_TEST=1 ;;
     y)
       printVersion
@@ -744,6 +803,8 @@ assert isSet "${MAIN_DISK}" \
   error "the option '-m, --main-disk' is required."
 assert isSet "${BOOT_KEY}" \
   error "the option '-b, --boot-key' is required."
+assert isSet "${ROOT_SIZE}" \
+  error "the option '-R, --root-size' is required."
 
 # Check that we are NOT Setting up the system and the boot-key on the same disk
 assert isNotMainDisk "${BOOT_KEY}" \

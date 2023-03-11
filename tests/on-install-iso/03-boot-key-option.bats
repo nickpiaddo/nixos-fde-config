@@ -29,13 +29,13 @@ setup() {
 }
 
 @test "A  REDEFINED short boot-key option with the SAME VALUE is ignored" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -b /dev/sdb -m /dev/sda -b /dev/sdb"
+  run bash -c "${SSH} /root/nixos-fde-config -t -b /dev/sdb -m /dev/sda -R 16G -b /dev/sdb"
 
   assert_success
 }
 
 @test "A  REDEFINED short boot-key option with CONFLICTING VALUES triggers an error" {
-  run bash -c "${SSH} /root/nixos-fde-config -t -b /dev/sda -m /dev/sda -b /dev/sdb"
+  run bash -c "${SSH} /root/nixos-fde-config -t -b /dev/sda -m /dev/sda -R 16G -b /dev/sdb"
 
   assert_failure 1
   assert_line --partial "redefined with conflicting values: '/dev/sda' vs '/dev/sdb'"
@@ -66,6 +66,7 @@ setup() {
   run bash -c "${SSH} /root/nixos-fde-config -t \
     --boot-key /dev/sdb \
     --main-disk /dev/sda \
+    --root-size 16G \
     --boot-key /dev/sdb"
 
   assert_success
@@ -75,6 +76,7 @@ setup() {
   run bash -c "${SSH} /root/nixos-fde-config -t \
     --boot-key /dev/sda \
     --main-disk /dev/sda \
+    --root-size 16G \
     --boot-key /dev/sdb"
 
   assert_failure 1
@@ -97,7 +99,8 @@ setup() {
 
 @test "Main-disk and boot-key option values MUST NOT point to the same device" {
   run bash -c "${SSH} /root/nixos-fde-config -t \
-    --main-disk /dev/sda  --boot-key /dev/sda"
+    --main-disk /dev/sda  --boot-key /dev/sda \
+    --root-size 8G"
 
   assert_failure 1
   assert_line --partial "options main-disk and boot-key refer to the same device: /dev/sda"

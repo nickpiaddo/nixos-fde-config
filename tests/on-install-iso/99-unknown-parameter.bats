@@ -33,8 +33,15 @@ setup() {
   assert_failure 1
 }
 
+@test "An UNKNOWN short parameter OPTION as the THIRD argument triggers an error" {
+  run bash -c "${SSH} /root/nixos-fde-config -m /dev/sda -b /dev/sdb -U -R 8G"
+
+  assert_line --partial "unknown option: -U"
+  assert_failure 1
+}
+
 @test "An UNKNOWN short parameter OPTION as the LAST argument triggers an error" {
-  run bash -c "${SSH} /root/nixos-fde-config -m /dev/sda -b /dev/sdb -U"
+  run bash -c "${SSH} /root/nixos-fde-config -m /dev/sda -b /dev/sdb -R 8G -U"
 
   assert_line --partial "unknown option: -U"
   assert_failure 1
@@ -69,10 +76,22 @@ setup() {
   assert_failure 1
 }
 
+@test "An UNKNOWN long  parameter OPTION as the THIRD argument triggers an error" {
+  run bash -c "${SSH} /root/nixos-fde-config \
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb \
+    --unknown \
+    --root-size 8G"
+
+  assert_line --partial "unknown option: --unknown"
+  assert_failure 1
+}
+
 @test "An UNKNOWN long  parameter OPTION as the LAST argument triggers an error" {
   run bash -c "${SSH} /root/nixos-fde-config \
     --main-disk /dev/sda \
     --boot-key /dev/sdb \
+    --root-size 8G \
     --unknown"
 
   assert_line --partial "unknown option: --unknown"
