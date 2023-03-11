@@ -48,7 +48,8 @@ setup() {
 }
 
 @test "An UNKNOWN short parameter OPTION as the LAST argument triggers an error" {
-  run bash -c "${SSH} /root/nixos-fde-config -m /dev/sda -b /dev/sdb -R 8G -S 1G -H 8G -U"
+  run bash -c "${SSH} /root/nixos-fde-config -m /dev/sda -b /dev/sdb -R 8G -S 1G \
+    -H 8G --skip-wipe-disks -U"
 
   assert_line --partial "unknown option: -U"
   assert_failure 1
@@ -113,6 +114,7 @@ setup() {
     --root-size 8G \
     --swap-size 1G \
     --home-size 8G \
+    --skip-wipe-disks \
     --unknown"
 
   assert_line --partial "unknown option: --unknown"

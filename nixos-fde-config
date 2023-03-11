@@ -353,6 +353,7 @@ function toLongOption {
     '-R') echo '--root-size' ;;
     '-S') echo '--swap-size' ;;
     '-H') echo '--home-size' ;;
+    '-x') echo '--skip-wipe-disks' ;;
     *) echo "" ;;
   esac
 }
@@ -936,6 +937,7 @@ for arg in "$@"; do
     '--root-size') set -- "$@" '-R' ;;
     '--swap-size') set -- "$@" '-S' ;;
     '--home-size') set -- "$@" '-H' ;;
+    '--skip-wipe-disks') set -- "$@" '-x' ;;
     '--version') set -- "$@" '-y' ;;
     *) set -- "$@" "$arg" ;;
   esac
@@ -943,7 +945,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:R:S:H:tyz" short_option; do
+while getopts ":hm:b:R:S:H:xtyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -963,6 +965,7 @@ while getopts ":hm:b:R:S:H:tyz" short_option; do
       HOME_SIZE="$(run parseHomeSize "${short_option}" "${RAW_HOME_SIZE}")"
       RAW_HOME_SIZE="${OPTARG}"
       ;;
+    x) WIPE_DISKS=false ;;
     t) RUNNING_TEST=1 ;;
     y)
       printVersion

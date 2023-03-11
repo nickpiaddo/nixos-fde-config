@@ -74,3 +74,15 @@ setup() {
 
   assert_success
 }
+
+@test "Running nixos-fde-config with valid parameters + skip-wipe-disks succeeds" {
+  run bash -c "${SSH} /root/nixos-fde-config -t \
+    --main-disk /dev/sda \
+    --boot-key /dev/sdb \
+    --root-size 16G \
+    --swap-size 4G \
+    --home-size 8G \
+    --skip-wipe-disks"
+
+  assert_success
+}
