@@ -874,6 +874,9 @@ function deleteInstallationArtefacts {
   subheading "Deactivating SWAP partition..."
   quiet ignoreExitStatus swapoff /dev/mapper/vg_nixos-swap
 
+  subheading "Unmounting partitions..."
+  quiet ignoreExitStatus umount -R -q -f /mnt # Unmount root and home partitions
+
   subheading "Deactivating LVM logical volumes..."
   quiet ignoreExitStatus lvchange --activate n --force vg_nixos
 
@@ -1512,4 +1515,25 @@ if [[ "${CHECKPOINT_ID}" == boot-key-ready ]]; then
   fi
 
   saveCheckPoint main-disk-ready
+fi
+
+if [[ "${CHECKPOINT_ID}" == main-disk-ready ]]; then
+  heading "Preparing for NixOS Installation..."
+
+  subheading "Mounting partitions..."
+  mount /dev/vg_nixos/root /mnt
+  mkdir -p /mnt/boot
+  mount "${BOOT_KEY}1" /mnt/boot
+
+  if [[ ${HOME_SIZE} -gt 0 ]]; then
+    mkdir -p /mnt/home
+    mount /dev/vg_nixos/home /mnt/home
+  fi
+
+  if [[ ${SWAP_SIZE} -gt 0 ]]; then
+    subheading "Activating swap partition..."
+    swapon /dev/vg_nixos/swap
+  fi
+
+  saveCheckPoint mount-points-ready
 fi
