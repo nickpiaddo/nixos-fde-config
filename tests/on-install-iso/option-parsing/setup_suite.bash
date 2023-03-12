@@ -60,6 +60,11 @@ setup_suite() {
   bash -c "${SCP} \
     ${BASE_DIR}/nixos-fde-config \
     root@localhost:~/" 3>&-
+
+  expect -c "
+  match_max 100000
+  spawn ${EXP_SSH} /root/nixos-fde-config --reset
+  expect eof" 3>&-
 }
 
 ## ======= Uncomment section for full-automatic testing

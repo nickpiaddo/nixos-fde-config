@@ -64,6 +64,8 @@ setup_suite() {
   echo "# ⚙ Running nixos-fde-config..." >&3
   expect -c "
   match_max 100000
+  spawn ${EXP_SSH} /root/nixos-fde-config --reset
+  expect eof
   spawn ${EXP_SSH} /root/nixos-fde-config -x -m /dev/sda -b /dev/sdb -R 16G -S 4G -H 10G
   while {true} {
     expect {

@@ -112,6 +112,8 @@ function printUsage {
 
        $(basename "$0") --help
 
+       $(basename "$0") --reset
+
        $(basename "$0") --resume
 
        $(basename "$0") --version
@@ -156,6 +158,8 @@ function printHelp {
                         [--skip-wipe-disks]
 
        $(basename "$0") --help
+
+       $(basename "$0") --reset
 
        $(basename "$0") --resume
 
@@ -207,6 +211,8 @@ function printHelp {
        -h, --help               Display this help and exit.
        -z, --resume             Resume execution from the last successful step
                                 before interruption.
+       --reset                  Revert main disk to a safe state before script
+                                re-execution.
        --version                Print script version string.
 
        -m, --main-disk DEVPATH  Specify where to install NixOS.
@@ -272,6 +278,11 @@ After resolving the issue, you can resume execution with the command:
 
     $(basename "$0") --resume
 
+If the problem persists, try resetting to a safe state with the command:
+
+    $(basename "$0") --reset
+
+Then start over.
 END
     return 1
   fi
@@ -357,6 +368,7 @@ function toLongOption {
     '-h') echo '--help' ;;
     '-y') echo '--version' ;;
     '-z') echo '--resume' ;;
+    '-r') echo '--reset' ;;
     '-m') echo '--main-disk' ;;
     '-b') echo '--boot-key' ;;
     '-R') echo '--root-size' ;;
@@ -848,6 +860,34 @@ function saveCheckPoint {
     ${HOME_SIZE} ${WIPE_DISKS} ${CHECKPOINT_ID}" >|"${TMP_FILE}"
 }
 
+######################################################################
+# Revert main disk to a safe state before script re-execution..
+# Arguments:
+#  None
+# Returns:
+#  Zero
+######################################################################
+function deleteInstallationArtefacts {
+  heading "Removing installation artefacts..."
+
+  # Clean up possible artefacts from a previous failed run
+  subheading "Deactivating SWAP partition..."
+  quiet ignoreExitStatus swapoff /dev/mapper/vg_nixos-swap
+
+  subheading "Deactivating LVM logical volumes..."
+  quiet ignoreExitStatus lvchange --activate n --force vg_nixos
+
+  subheading "Closing LUKS container..."
+  quiet ignoreExitStatus dmsetup remove_all
+
+  # Delete LUKS2 header amd key files
+  subheading "Deleting secrets..."
+  quiet ignoreExitStatus umount -R -q -f /root/secrets
+  quiet ignoreExitStatus rm -rf /root/secrets
+
+  heading "Done."
+}
+
 #### PREDICATE FUNCTIONS
 
 ######################################################################
@@ -1055,7 +1095,13 @@ function parseMaindisk {
 Please unmount them all and start again.
 If you see this message after a failed run, try the command:
 
-  $(basename "$0") --resume"
+  $(basename "$0") --resume
+
+If the problem persists, try resetting to a safe state with the command:
+
+  $(basename "$0") --reset
+
+Then start over."
   assert hasDeviceAtLeast16GiB "${device_path}" \
     error "'${device_path}' must have at least 16GiB available."
 
@@ -1082,7 +1128,13 @@ function parseBootkey {
 Please unmount them all and start again.
 If you see this message after a failed run, try the command:
 
-  $(basename "$0") --resume"
+  $(basename "$0") --resume
+
+If the problem persists, try resetting to a safe state with the command:
+
+  $(basename "$0") --reset
+
+Then start over."
   assert hasDeviceAtLeast2GiB "${device_path}" \
     error "'${device_path}' must have at least 2GiB available."
 
@@ -1179,6 +1231,7 @@ for arg in "$@"; do
     '--boot-key') set -- "$@" '-b' ;;
     '--main-disk') set -- "$@" '-m' ;;
     '--resume') set -- "$@" '-z' ;;
+    '--reset') set -- "$@" '-r' ;;
     '--root-size') set -- "$@" '-R' ;;
     '--swap-size') set -- "$@" '-S' ;;
     '--home-size') set -- "$@" '-H' ;;
@@ -1190,7 +1243,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:R:S:H:xtyz" short_option; do
+while getopts ":hm:b:R:S:H:xtyzr" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -1217,6 +1270,10 @@ while getopts ":hm:b:R:S:H:xtyz" short_option; do
       exit 0
       ;;
     z) RESUME=true ;;
+    r)
+      deleteInstallationArtefacts
+      exit 0
+      ;;
     :) error "option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
     ?)
       case "${OPTARG}" in
@@ -1382,4 +1439,77 @@ if [[ "${CHECKPOINT_ID}" == disks-wiped ]]; then
   subheading "Formatting ESP partition..."
   mkfs.fat -F 32 -n ESP -- "${BOOT_KEY}1"
   saveCheckPoint boot-key-ready
+fi
+
+if [[ "${CHECKPOINT_ID}" == boot-key-ready ]]; then
+  heading "Preparing Main Disk..."
+
+  subheading "Generating keyfile..."
+  # Generate an 8MiB key file to open the LUKS2 container on the main disk.
+  # For extra safety, the secret in the key file is kept on a section of RAM that
+  # will never be swapped out to disk.
+  mkdir -p -- /root/secrets/
+  mount -t ramfs -- none /root/secrets
+
+  dd if=/dev/urandom \
+    of=/root/secrets/luks-keyfile \
+    bs=$(((8 * 1024 * 1024) - 1)) \
+    count=1 \
+    2>/dev/null
+
+  subheading "Creating partition table on ${MAIN_DISK}..."
+  quiet parted --script --align optimal "${MAIN_DISK}" -- mklabel gpt
+
+  subheading "Creating LUKS2 container on ${MAIN_DISK}..."
+  cryptsetup luksFormat \
+    --batch-mode \
+    --use-urandom \
+    --type luks2 \
+    --cipher aes-xts-plain64 \
+    --pbkdf argon2id \
+    --key-size 512 \
+    --hash sha512 \
+    --key-file /root/secrets/luks-keyfile \
+    --header /root/secrets/luks-header \
+    -- "${MAIN_DISK}"
+
+  subheading "Opening LUKS2 container on ${MAIN_DISK}..."
+  cryptsetup open "${MAIN_DISK}" lukscontainer \
+    --key-file /root/secrets/luks-keyfile \
+    --header /root/secrets/luks-header
+
+  # From: https://wiki.archlinux.org/title/LVM#Advantages
+  #       https://wiki.archlinux.org/title/Ext4#Bytes-per-inode_ratio
+  #       https://wiki.archlinux.org/title/Ext4#Reserved_blocks
+  #
+  # Root and home partitions will live on separate logical volumes. The nix store
+  # can grow large fairly quickly with each generation. However, LVM allows us to
+  # "dynamically" resize logical volumes if necessary. We elect to use ext4
+  # filesystems which support online resizing.
+  #
+  subheading "Creating LVM volume in LUKS2 container..."
+  pvcreate /dev/mapper/lukscontainer
+  vgcreate vg_nixos /dev/mapper/lukscontainer
+
+  subheading "Creating root, swap and home partitions..."
+  lvcreate --size "${ROOT_SIZE}b" --name root vg_nixos
+
+  if [[ ${SWAP_SIZE} -gt 0 ]]; then
+    lvcreate --size "${SWAP_SIZE}b" --name swap vg_nixos
+  fi
+  if [[ ${HOME_SIZE} -gt 0 ]]; then
+    lvcreate --size "${HOME_SIZE}b" --name home vg_nixos
+  fi
+
+  subheading "Formatting root, swap and home partitions..."
+  mkfs.ext4 -L root -q /dev/vg_nixos/root
+
+  if [[ ${SWAP_SIZE} -gt 0 ]]; then
+    mkswap -L swap /dev/vg_nixos/swap
+  fi
+  if [[ ${HOME_SIZE} -gt 0 ]]; then
+    mkfs.ext4 -L home -q /dev/vg_nixos/home
+  fi
+
+  saveCheckPoint main-disk-ready
 fi
