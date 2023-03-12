@@ -1366,3 +1366,20 @@ if [[ "${CHECKPOINT_ID}" == tools-installed ]]; then
   fi
   saveCheckPoint disks-wiped
 fi
+
+if [[ "${CHECKPOINT_ID}" == disks-wiped ]]; then
+  heading "Preparing Boot-Key..."
+
+  subheading "Creating a bootable 2GiB ESP partition on ${BOOT_KEY}"
+  # Create a partition table
+  quiet parted --script --align optimal "${BOOT_KEY}" -- mklabel gpt
+  # Create a 2GiB boot partition named ESP after the partition table.
+  # This is where the kernel and initramdisk is installed.
+  quiet parted --script --align optimal "${BOOT_KEY}" -- mkpart ESP 1MiB 2049MiB
+  # make ESP bootable.
+  quiet parted --script "${BOOT_KEY}" -- set 1 boot on
+
+  subheading "Formatting ESP partition..."
+  mkfs.fat -F 32 -n ESP -- "${BOOT_KEY}1"
+  saveCheckPoint boot-key-ready
+fi
