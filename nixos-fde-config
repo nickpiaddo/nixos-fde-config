@@ -331,6 +331,15 @@ function confirmContinue {
   fi
 }
 
+######################################################################
+# Executes a statement and suppresses its exit status
+# Arguments:
+#   A bash expression
+# Returns:
+#   0
+######################################################################
+function ignoreExitStatus { if ! ("$@"); then return 0; fi; }
+
 #### CONVERSION FUNCTIONS
 
 ######################################################################
@@ -770,6 +779,30 @@ function countDown {
     sleep 1
   done
   echo ""
+}
+
+######################################################################
+# Executes a statement and suppresses its output
+# Arguments:
+#   A bash expression
+# Returns:
+#   Expression's exit status
+######################################################################
+function quiet { "$@" >/dev/null 2>&1; }
+
+######################################################################
+# Fill device with random data
+# Arguments:
+#   Device path
+# Returns:
+#   0 when device is filled, non-zero on error
+######################################################################
+function fillWithRandomData {
+  local device="$1"
+  local size_in_bytes
+  size_in_bytes=$(blockdev --getsize64 "${device}")
+
+  pv --size "${size_in_bytes}" --stop-at-size </dev/urandom >"${device}"
 }
 
 #### STATE MANAGEMENT FUNCTIONS
@@ -1318,4 +1351,18 @@ if [[ -z "${CHECKPOINT_ID}" ]]; then
   nix-env -iA b3sum -f https://github.com/NixOS/nixpkgs/archive/1732ee9120e43c1df33a33004315741d0173d0b2.tar.gz
   nix-env -iA pv -f https://github.com/NixOS/nixpkgs/archive/1732ee9120e43c1df33a33004315741d0173d0b2.tar.gz
   saveCheckPoint tools-installed
+fi
+
+if [[ "${CHECKPOINT_ID}" == tools-installed ]]; then
+  if [[ "${WIPE_DISKS}" == true ]]; then
+    heading "Wiping Disks..."
+
+    subheading "Wiping boot-key..."
+    fillWithRandomData "${BOOT_KEY}"
+
+    subheading "Wiping main disk..."
+    warn "Depending on your hardware, this step can take hours to complete!"
+    fillWithRandomData "${MAIN_DISK}"
+  fi
+  saveCheckPoint disks-wiped
 fi
