@@ -70,6 +70,8 @@ setup_suite() {
   while {true} {
     expect {
       \"Would you like to continue\" { send -- \"y\n\"; }
+      \"Enter passphrase \"  { send -- \"nixos\n\"; }
+      \"Confirm passphrase: \" { send -- \"nixos\n\"; }
       eof { exit; }
     }
   } " 3>&-
