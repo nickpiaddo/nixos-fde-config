@@ -48,7 +48,7 @@ setup_suite() {
   export SSH="passh -p '' ssh root@localhost -p ${SSH_PORT} -t ${SSH_OPTIONS}"
 
   # For running command on the VM through expect
-  EXP_SSH="passh -p {} ssh root@localhost -p ${SSH_PORT} -t ${SSH_OPTIONS}"
+  export EXP_SSH="passh -p {} ssh root@localhost -p ${SSH_PORT} -t ${SSH_OPTIONS}"
 
   # For copying files to the VM
   SCP="passh -p '' scp -P ${SSH_PORT} ${SSH_OPTIONS}"
@@ -72,6 +72,7 @@ setup_suite() {
       \"Would you like to continue\" { send -- \"y\n\"; }
       \"Enter passphrase \"  { send -- \"nixos\n\"; }
       \"Confirm passphrase: \" { send -- \"nixos\n\"; }
+      \"Hit q to exit\" { send -- \"q\"; }
       eof { exit; }
     }
   } " 3>&-

@@ -114,6 +114,8 @@ function printUsage {
 
        $(basename "$0") --help
 
+       $(basename "$0") --help-rescue
+
        $(basename "$0") --reset
 
        $(basename "$0") --resume
@@ -162,6 +164,8 @@ function printHelp {
        $(basename "$0") --save-hash DEVPATH
 
        $(basename "$0") --help
+
+       $(basename "$0") --help-rescue
 
        $(basename "$0") --reset
 
@@ -213,6 +217,8 @@ function printHelp {
    $(bold OPTIONS)
 
        -h, --help               Display this help and exit.
+       --help-rescue            Display instructions for rescuing a failed
+                                NixOS install.
        -z, --resume             Resume execution from the last successful step
                                 before interruption.
        --reset                  Revert main disk to a safe state before script
@@ -377,6 +383,7 @@ function toLongOption {
     '-z') echo '--resume' ;;
     '-r') echo '--reset' ;;
     '-a') echo '--save-hash' ;;
+    '-u') echo '--help-rescue' ;;
     '-m') echo '--main-disk' ;;
     '-b') echo '--boot-key' ;;
     '-R') echo '--root-size' ;;
@@ -1244,6 +1251,82 @@ function parseHomeSize {
   echo "${size_in_bytes}"
 }
 
+function printRescueInstructions {
+  fold --width=80 --spaces - <<END | less -cR
+--------------------------------------------------------------------------------
+To display this message again, run the command:
+
+  $(basename "$0") --help-rescue
+
+Hit q to exit.
+--------------------------------------------------------------------------------
+
+$(basename "$0") has generated a configuration file at
+
+$(bold /mnt/etc/nixos/configuration.nix).
+
+Edit it to configure aspects of your NixOS machine, as described by the NixOS
+manual at
+https://nixos.org/manual/nixos/stable/#sec-installation-manual-installing, then
+run the command below to complete your installation.
+
+  $(bold nixos-install)
+
+If you see error messages, apply the necessary corrections and try again.
+
+At the last step, nixos-install will ask you to set a password for root. After
+providing a password, run the command (assuming /dev/sdb is your bootkey):
+
+  $(bold nixos-fde-config) --save-hash /dev/sdb1
+
+followed by:
+
+  $(bold reboot)
+
+Your machine will then boot into a full-disk encrypted NixOS, and ask for your
+passphrase.
+
+After logging in as a user, $(bold "Do NOT forget to create a backup boot-key!")
+Or you will, neither be able to start your system, nor recover your data if you
+happen to misplace your primary key.
+
+If after a reboot, NixOS fails to start, you can rescue your system by
+following the instructions below:
+ - boot your machine with the installation ISO
+ - at the prompt login as root with:
+     $ $(bold sudo) -i
+ - install AGE:
+     # $(bold nix-env) -iA nixos.age
+ - plug your bootkey in a USB port
+ - run the command $(bold lsblk) to determine the path to your boot-key (e.g. /dev/sdc1)
+ - create the directory /root/bootkey
+     # $(bold mkdir) /root/bootkey
+ - mount the bootkey (assuming your bootkey is /dev/sdc1):
+     # $(bold mount) /dev/sdc1 /root/bootkey
+ - decrypt the rescue file with your passphrase:
+     # $(bold age) -o /root/archive -d /root/bootkey/EFI/extended/secboot
+ - extract the header and key file in the decrypted archive:
+     # $(bold tar) -xz -C /root -f /root/archive
+ - open your LUKS container (assuming it is /dev/sda):
+     # $(bold cryptsetup) open /dev/sda lukscontainer --key-file /root/luks-keyfile  --header /root/luks-header
+ - mount your root partition:
+     # $(bold mount) /dev/mapper/vg_nixos-root /mnt
+ - mount your boot partition (assuming /dev/sdc1 is your bootkey):
+     # $(bold umount) /root/bootkey
+     # $(bold mount) /dev/sdc1 /mnt/boot
+
+Now, you should be able to edit your configuration file
+at $(bold /mnt/etc/nixos/configuration.nix), then rebuild your system with $(bold nixos-install).
+
+Once $(bold nixos-install) has finished running without errors, reboot your
+machine with the command:
+
+  $(bold reboot)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+END
+}
+
 ################################################################################
 #                        MAIN PROGRAM
 ################################################################################
@@ -1263,6 +1346,7 @@ for arg in "$@"; do
     '--main-disk') set -- "$@" '-m' ;;
     '--resume') set -- "$@" '-z' ;;
     '--reset') set -- "$@" '-r' ;;
+    '--help-rescue') set -- "$@" '-u' ;;
     '--root-size') set -- "$@" '-R' ;;
     '--save-hash') set -- "$@" '-a' ;;
     '--swap-size') set -- "$@" '-S' ;;
@@ -1275,7 +1359,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:a:R:S:H:xtyzr" short_option; do
+while getopts ":hm:b:a:R:S:H:xtyzru" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -1314,6 +1398,10 @@ while getopts ":hm:b:a:R:S:H:xtyzr" short_option; do
     z) RESUME=true ;;
     r)
       deleteInstallationArtefacts
+      exit 0
+      ;;
+    u)
+      printRescueInstructions
       exit 0
       ;;
     :) error "option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
@@ -2149,3 +2237,6 @@ if [[ "${CHECKPOINT_ID}" == fde-configuration-done ]]; then
 
   saveCheckPoint nixos-configuration-done
 fi
+
+heading "\n********** Finished preparing installation **********"
+printRescueInstructions
