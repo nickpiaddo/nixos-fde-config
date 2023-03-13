@@ -1766,7 +1766,7 @@ if [[ "${CHECKPOINT_ID}" == secrets-encrypted ]]; then
         # They will be included in the initramfs.
         ########################################################################
 
-        secrets = { "/secboot" = "\${settings.decryptionArchive}"; };
+        secrets = { "/secboot" = "\${settings.decryptionFile}"; };
 
         luks.devices."lukscontainer" = {
           device = "/dev/disk/by-id/${MAIN_DISK_WWID}";
@@ -2118,4 +2118,15 @@ if [[ "${CHECKPOINT_ID}" == secrets-encrypted ]]; then
 END
 
   saveCheckPoint fde-configuration-done
+fi
+
+if [[ "${CHECKPOINT_ID}" == fde-configuration-done ]]; then
+  subheading "Generating NixOS configuration files..."
+  nixos-generate-config --root /mnt
+
+  # Add fde-configuration.nix to imports list in configuration.nix
+  sed -i 's/hardware-[a-z\.]*/hardware-configuration\.nix\n      \.\/fde-configuration\.nix/' \
+    /mnt/etc/nixos/configuration.nix
+
+  saveCheckPoint nixos-configuration-done
 fi
