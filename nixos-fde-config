@@ -817,6 +817,26 @@ function fillWithRandomData {
   pv --size "${size_in_bytes}" --stop-at-size </dev/urandom >"${device}"
 }
 
+######################################################################
+# Find a disk's World Wide IDentificator (WWID)
+# Arguments:
+#   Device path
+# Returns:
+#   Device WWID if it exists, empty string otherwise
+######################################################################
+function findWWID {
+  local devicePath="$1"
+  local path
+
+  for device in /dev/disk/by-id/*; do
+    path="$(realpath "${device}")"
+    if [[ "${path}" == "${devicePath}" ]]; then
+      basename "${device}"
+      break
+    fi
+  done
+}
+
 #### STATE MANAGEMENT FUNCTIONS
 
 ######################################################################
@@ -1588,4 +1608,514 @@ END
   cp /mnt/etc/nixos/initrd/secrets/secboot /mnt/boot/EFI/extended/
 
   saveCheckPoint secrets-encrypted
+fi
+
+if [[ "${CHECKPOINT_ID}" == secrets-encrypted ]]; then
+  subheading "Generating Full-Disk Encryption (FDE) configuration file..."
+
+  BOOT_KEY_WWID="$(findWWID "${BOOT_KEY}1")"
+  MAIN_DISK_WWID="$(findWWID "${MAIN_DISK}")"
+  DATETIME="$(date -Iseconds)"
+
+  mkdir -p /mnt/etc/nixos/
+  cat <<END >|/mnt/etc/nixos/fde-configuration.nix
+#|- fde-configuration.nix/${VERSION}
+
+################################################################################
+# Full disk encryption configuration file
+#
+# This file was auto-generated at installation time. You should not edit it
+# manually. Instead use \`bk\` to adjust the settings.
+#
+# However, if you must, limit yourself to the 'settings' attribute-set below.
+################################################################################
+
+{ config, lib, pkgs, ... }:
+  let
+    settings = {
+      # Primary boot-key.
+      primary = {
+          id = "${BOOT_KEY_WWID}";
+          label = "primary";
+          creationDate = "${DATETIME}";
+          lastUpdated = "${DATETIME}";
+          hash = "0000000000000000000000000000000000000000000000000000000000000000";
+        };
+      # List of backup boot-keys.
+      backups = [];
+      # Maximum number of decryption attempts before program termination
+      # range [1-65535].
+      maxAttempts = 3;
+      # Mount location of the primary boot-key.
+      mountPoint = "/boot";
+      # Refuse to boot from a bootkey other than the primary or a member
+      # of the backup list if set to 'true'.
+      checkBootkeyIntegrity = false;
+      # Location of the archive containing a LUKS keyfile and header file
+      # necessary for device decryption.
+      decryptionFile = "/etc/nixos/initrd/secrets/secboot";
+      # Default location of the archive containing files necessary to rescue a
+      # full-disk encrypted NixOS system (path relative to the mount point of
+      # a bootkey).
+      rescueFile = "EFI/extended/secboot";
+    };
+  in
+    {
+      ##########################################################################
+      # Boot key mount location.
+      # fileSystems.<name>.device
+      #
+      # <name> MUST be the same as the EFI System Partition mount point option
+      # 'boot.loader.efi.efiSysMountPoint' in etc/nixos/comfiguration.nix,
+      # By default <name> = "/boot".
+      #
+      # For example if you choose "/efi" as the mount point:
+      #
+      #     boot.loader.efi.efiSysMountPoint = "/efi";
+      #
+      # you must adjust the attribute settings.mountPoint accordingly
+      #
+      # settings = {
+      # ...
+      #     mountPoint ="/efi";
+      # ...
+      #     };
+      #
+      # Otherwise, new build generations will not be added to your boot-key.
+      #
+      ##########################################################################
+
+      fileSystems."\${settings.mountPoint}" = {
+        # lib.mkForce: assigns the highest priority to an attribute value,
+        # preventing it from being modified by another module.
+        device = lib.mkForce "/dev/disk/by-id/\${settings.primary.id}";
+
+        # "noauto"        Can only be mounted explicitly
+        # "X-mount.mkdir" Allow to make a target directory (mountpoint) if it
+        #                 does not exist yet.
+        options = ["noauto" "X-mount.mkdir"];
+        };
+
+
+      ##########################################################################
+      # FIXME Create a statically linked AGE to add to initrd.
+      #
+      # Using a dynamically linked version (the default in nixpkgs) leads to
+      # extraUtilsCommandsTest failing with the following error message during
+      # the derivation's build phase:
+      #
+      # Segmentation fault      (core dumped) \$out/bin/age --version
+      #
+      # Note: statically linking glibc is discouraged, since glibc statically
+      # linked programs can have multiple "copies of the C library in its
+      # address space, and they might fight over whose stdout buffer is to be
+      # used, who gets to call sbrk with a nonzero argument, that sort of thing.
+      # There is a bunch of defensive logic inside glibc to try to make this
+      # work, but it's never been guaranteed to work".  see:
+      # https://stackoverflow.com/questions/57476533/why-is-statically-linking-glibc-discouraged
+      #
+      # There are nixpkgs static package sets linked with musl currently in the
+      # works, but lacking documentation at the moment. When ready,
+      # pkgsStatic.age should be a good alternative.
+      # see: https://github.com/NixOS/nixpkgs/issues/227807
+      ##########################################################################
+
+      nixpkgs.overlays = [
+        (self: super: {
+           age-static = super.age.overrideAttrs
+             (final: prev: {
+                # Package dependencies
+                buildInputs = [ pkgs.stdenv pkgs.go pkgs.glibc.static ];
+                CFLAGS="-I\${pkgs.glibc.dev}/include";
+                LDFLAGS="-L\${pkgs.glibc}/lib";
+
+                # Tags and ldflags taken from
+                # https://github.com/golang/go/issues/26492#issuecomment-837053426
+                tags = "osusergo,netgo,static";
+
+                # Blend of original package flags at
+                # https://github.com/NixOS/nixpkgs/blob/3751e1e40bfbcc2072b21a800387d87aa52c11c0/pkgs/tools/security/age/default.nix#L36
+                # and those taken from golang repo
+                ldflags = [
+                  "-s" "-w" "-X main.Version=\${prev.version}"
+                  "-linkmode external" "-extldflags '-static'"
+                  ];
+
+                # This is a statically linked binary, but patchelf is expecting
+                # a dynamically linked file. It emits errors, and aborts the
+                # build if enabled.
+                dontPatchELF = true;
+
+              });
+        })
+        ];
+
+      boot.initrd = {
+        kernelModules = [ "uas" "usbcore" "usb_storage" "usb_common"
+                          "vfat" "nls_cp437" "nls_iso8859_1" ];
+
+        ########################################################################
+        # Add statically linked AGE to initrd
+        ########################################################################
+        extraUtilsCommands = '' copy_bin_and_libs \${pkgs.age-static}/bin/age '';
+        extraUtilsCommandsTest = '' \$out/bin/age --version '';
+
+        ########################################################################
+        # The key file and header necessary to decrypt the LUKS drive are kept
+        # in a gzip-compressed encrypted archive.
+        # They will be included in the initramfs.
+        ########################################################################
+
+        secrets = { "/secboot" = "\${settings.decryptionArchive}"; };
+
+        luks.devices."lukscontainer" = {
+          device = "/dev/disk/by-id/${MAIN_DISK_WWID}";
+          preLVM = false; # run postDeviceCommands before attempting decryption
+          allowDiscards = true;
+          keyFile = "/secrets/luks-keyfile";
+          header  = "/secrets/luks-header";
+          postOpenCommands = ''
+            # Securely delete secrets from memory after successful drive decryption
+            shred -n 10 -z -u -- /secrets/luks-keyfile
+            shred -n 10 -z -u -- /secrets/luks-header
+            umount /secrets 2>/dev/null
+            rm -rf /secrets
+          '';
+          };
+      };
+
+      boot.initrd.postDeviceCommands = ''
+        ########################################################################
+        # Defining the helper functions and main program inside a nested
+        # function has two advantages:
+        #
+        #   1 - every inner variable or function defined inside the host
+        #       function is local.
+        #
+        #   2 - if there is a name collision between a function outside the
+        #       host function and an inner function, the inner function takes
+        #       precedence.
+        #
+        #       e.g.
+        #             # Definitions
+        #             function a {
+        #                echo "outer a"
+        #             }
+        #
+        #             b () ( # note the parenthesis instead of a curly brace
+        #               function a {
+        #                   echo "inner a"
+        #                 }
+        #                a
+        #             )
+        #
+        #             # Execution
+        #             a
+        #             b
+        #             a
+        #
+        #             # Output
+        #             outer a
+        #             inner a
+        #             outer a
+        ########################################################################
+
+        setupLUKSOpenContext () (
+          ######################################################################
+          #             HELPER FUNCTIONS
+          ######################################################################
+
+          ######################################################################
+          # Securely delete a file or files in a directory (recursive).
+          # Arguments:
+          #   File or directory name
+          # Returns:
+          #   0 if files were deleted, non-zero on error
+          ######################################################################
+          function shredFile {
+            local file_or_dir="\$1"
+
+            if [[ -f "\$file_or_dir" ]]; then
+              shred -n 10 -z -- "\$file_or_dir"
+            else
+              for file in "\$file_or_dir"/*; do
+                shredFile "\$file"
+              done
+            fi
+          }
+
+          ######################################################################
+          # Create a ramfs directory to hold secrets and temporary files.
+          # Files kept in this directory will never be swapped out to disk,
+          # preservng their confidentiality.
+          # Arguments:
+          #   Directory path
+          # Returns:
+          #   0 if directory was created, non-zero on error
+          ######################################################################
+          function createRamfsDir {
+            local dir_path="\$1"
+
+            mkdir -m 0755 -p \$dir_path
+            mount -t ramfs none \$dir_path
+          }
+
+          ######################################################################
+          # Securely delete a ramfs directory.
+          # Arguments:
+          #  Directory name
+          # Returns:
+          #   0 if directory was deleted, non-zero on error
+          ######################################################################
+          function deleteRamfsDir {
+            local ramfs_dir="\$1"
+
+            shredFile \$ramfs_dir
+            umount \$ramfs_dir 2>/dev/null
+            rm -rf \$ramfs_dir
+          }
+
+          ######################################################################
+          # Setup AGE's decryption context.
+          # Arguments:
+          #  None
+          # Returns:
+          #   0 if decryption context was set, non-zero on error
+          ######################################################################
+          function setupAGEContext {
+            # When called from the terminal age opens /dev/tty to read the
+            # passphrase with no echo. See:
+            # https://github.com/FiloSottile/age/blob/36ae5671cfbb88c591c87a900b2c9a12999ea3b7/cmd/age/tui.go#L105
+            #
+            # Unfortunately during boot, keyboard input is taken from
+            # /dev/console. If left as-is, we get the following error message,
+            # and are unable to go any further.
+            #
+            # age: error: could not read passphrase: could not read passphrase: open /dev/tty: no such device or address
+            #
+            # As a work-around we create a temporary symlink /dev/tty -> /dev/console.
+
+            if [[ -e /dev/tty ]]; then
+               mv /dev/tty /dev/tty.orig
+            fi
+
+            ln -s /dev/console /dev/tty
+          }
+
+          ######################################################################
+          # Tear down AGE decryption context.
+          # Arguments:
+          #   None
+          # Returns:
+          #   0 if the original tty is restored, non-zero on error
+          ######################################################################
+          function teardownAGEContext {
+            # Delete symlink
+            rm -f /dev/tty
+            if [[ -e /dev/tty.orig ]]; then
+               mv /dev/tty.orig /dev/tty
+            fi
+          }
+
+          ######################################################################
+          # Execute an error function if a predicate function returns false.
+          # Arguments:
+          #   Predicate function
+          #   Argument to test
+          #   Error function to execute if assertion is false
+          #   Error message
+          # Outputs:
+          #   Nothing if the predicate is true. The error function's output
+          #   otherwise.
+          ######################################################################
+          function assert {
+            local pred_fun="\$1"
+            local pred_arg="\$2"
+            local error_fun="\$3"
+            local error_msg="\$4"
+
+            if ! \$pred_fun "\$pred_arg"; then
+              \$error_fun "\$error_msg"
+            fi
+          }
+
+          ######################################################################
+          # Print panic menu.
+          # Arguments:
+          #   Error message
+          # Outputs:
+          #   Menu on panic for rebooting or halting the system
+          ######################################################################
+          function failWith {
+            {
+              echo
+              echo "Fatal Error: \$1"
+              echo
+
+              echo "An error occurred in stage 1 of the boot process."
+              echo "Press one of the following keys:"
+              echo
+              echo "  r) to reboot immediately"
+              echo "  *) to shut down"
+            } >&2
+
+            read -n 1 reply </dev/console
+
+            if [[ "\$reply" = r ]]; then
+                echo "Rebooting..."
+                reboot -f
+            else
+                echo "Halting..."
+                halt -f
+            fi
+          }
+
+          ######################################################################
+          # Determine if the maximum number of decryption attempts is reached.
+          # Arguments:
+          #   Attempt count
+          # Outputs:
+          #   A five-second delay message before the next attempt
+          # Returns:
+          #   0 if the maximum number of attempts was NOT reached,
+          #   non-zero otherwise
+          ######################################################################
+          function canRetry {
+            local cnt="\$1"
+
+            if [[ \$cnt -lt "\${toString settings.maxAttempts}" ]]; then
+              echo -n "Next attempt in 5 seconds"
+              for i in \$(seq 5); do
+                echo -n "."
+                sleep 1
+              done
+              echo
+              return 0
+            fi
+            return 1
+          }
+
+          ######################################################################
+          # Setup authentication environment.
+          # Arguments:
+          #   None
+          # Returns:
+          #   0 if the environment was successfully setup,
+          #   non-zero otherwise
+          ######################################################################
+          function setup {
+            createRamfsDir /crypt-ramfs
+            setupAGEContext
+            createRamfsDir /secrets
+          }
+
+          ######################################################################
+          # Teardowm authentication environment.
+          # Arguments:
+          #   None
+          # Returns:
+          #   0 if the environment was successfully torn down,
+          #   non-zero otherwise
+          ######################################################################
+          function teardown {
+            teardownAGEContext
+            deleteRamfsDir /crypt-ramfs
+          }
+
+          ######################################################################
+          # Decrypt the compressed LUKS2 key and header file.
+          # Arguments:
+          #   Encrypted archive
+          # Returns:
+          #   0 if decryption is successful,
+          #   non-zero otherwise
+          ######################################################################
+          function decryptArchive {
+            age --output /crypt-ramfs/archive \\
+                --decrypt -- "\$1" \\
+                >/dev/null 2>&1
+          }
+
+          ######################################################################
+          # Decompress LUKS2 key and header file archive.
+          # Arguments:
+          #   Compressed file
+          # Returns:
+          #   0 if decompression is successful,
+          #   non-zero otherwise
+          ######################################################################
+          function extractSecrets { tar -xz -C /secrets -f "\$1"; }
+
+          ######################################################################
+          # Check that the LUKS2 key and header file were extracted.
+          # Arguments:
+          #   None
+          # Returns:
+          #   0 if expected files exist,
+          #   non-zero otherwise
+          ######################################################################
+          function secretFilesExist {
+            [[ -f /secrets/luks-keyfile && -f /secrets/luks-header ]]
+          }
+
+          ######################################################################
+          # Determine if the boot-key used to start the system is registered.
+          # Each valid boot-key has its World Wide Identifier (WWID)
+          # kept in a list of authorized devices.
+          # Before each boot, the id of the device containing the init ramdisk
+          # is checked against that list.
+          # The system will refuse to boot if it is not on the list.
+          # Arguments:
+          #   None
+          # Returns:
+          #   zero if the boot-key is valid, non-zero otherwise
+          ######################################################################
+          # TODO Determine why device nodes for usb thumbdrives are not created?
+          #function isValidBootkeyPresent {
+          #  local dualFactorPresent=1
+
+          #  local WWIDs="\${settings.primary.id} \${builtins.concatStringsSep " " (builtins.catAttrs "id" settings.backups)}"
+          #  for wwid in \$WWIDs; do
+          #    if [[ -e "/dev/disk/by-id/\$wwid" ]]; then
+          #      dualFactorPresent=0
+          #      break
+          #    fi
+          #  done
+
+          #  echo "\$dualFactorPresent"
+          #}
+
+          ######################################################################
+          #                           MAIN PROGRAM
+          ######################################################################
+          # TODO Decrypt secrets only if a registered boot-key is present
+          #
+          #
+          #if [[ "\${toString settings.checkBootkeyIntegrity}" == true && ! isValidBootkeyPresent ]]; then
+          #  failWith "Missing boot-key."
+          #fi
+
+          setup
+          for cnt in \$(seq "\${toString settings.maxAttempts}"); do
+            if decryptArchive /secboot ; then
+              assert extractSecrets "/crypt-ramfs/archive" \\
+                failWith "Unable to extract archive."
+              assert secretFilesExist "" \\
+                failWith "Missing boot-key."
+              break
+            else
+              echo "Failed attempt: \$cnt out of \${toString settings.maxAttempts}"
+              assert canRetry "\$cnt" \\
+                failWith "Exceeded maximum number of attempts."
+            fi
+          done
+          teardown
+          echo "Authentication successful."
+      )
+      setupLUKSOpenContext
+        '';
+    }
+END
+
+  saveCheckPoint fde-configuration-done
 fi
