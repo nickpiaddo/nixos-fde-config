@@ -1,0 +1,152 @@
+<!DOCTYPE html> <html lang=en><!--
+ Page saved with SingleFile
+ url: https://alpmestan.github.io/notes/nixos-qemu.html
+--><meta charset=utf-8>
+<meta name=author content=alp>
+<meta name=generator content=hakyll>
+<meta name=description content="Alp's notes">
+<link rel=canonical href=https://alpmestan.github.io/>
+<meta name=viewport content="width=device-width, initial-scale=1.0">
+<title>Deploying a NixOS configuration into a QEMU VM - Alp's notes</title>
+<style>/*! bulma.io v0.9.1 | MIT License | github.com/jgthms/bulma */@-webkit-keyframes spinAround{from{transform:rotate(0)}to{transform:rotate(359deg)}}@keyframes spinAround{from{transform:rotate(0)}to{transform:rotate(359deg)}}.block:not(:last-child),.box:not(:last-child),.breadcrumb:not(:last-child),.content:not(:last-child),.highlight:not(:last-child),.level:not(:last-child),.message:not(:last-child),.notification:not(:last-child),.pagination:not(:last-child),.progress:not(:last-child),.subtitle:not(:last-child),.table-container:not(:last-child),.table:not(:last-child),.tabs:not(:last-child),.title:not(:last-child){margin-bottom:1.5rem}/*! minireset.css v0.0.6 | MIT License | github.com/jgthms/minireset.css */body,h1,h2,html,li,p,ul{margin:0;padding:0}html{box-sizing:border-box}*,::after,::before{box-sizing:inherit}html{background-color:#fff;font-size:16px;-moz-osx-font-smoothing:grayscale;-webkit-font-smoothing:antialiased;min-width:300px;overflow-x:hidden;overflow-y:scroll;text-rendering:optimizeLegibility;-webkit-text-size-adjust:100%;-moz-text-size-adjust:100%;-ms-text-size-adjust:100%}section{display:block}body{font-family:BlinkMacSystemFont,-apple-system,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Fira Sans","Droid Sans","Helvetica Neue",Helvetica,Arial,sans-serif}code,pre{-moz-osx-font-smoothing:auto;-webkit-font-smoothing:auto;font-family:monospace}body{color:#4a4a4a;font-size:1em;font-weight:400;line-height:1.5}a{color:#3273dc;cursor:pointer;text-decoration:none}a:hover{color:#363636}code{background-color:#f5f5f5;color:#da1039;font-size:.875em;font-weight:400;padding:.25em .5em .25em}span{font-style:inherit;font-weight:inherit}pre{-webkit-overflow-scrolling:touch;background-color:#f5f5f5;color:#4a4a4a;font-size:.875em;overflow-x:auto;padding:1.25rem 1.5rem;word-wrap:normal}pre code{background-color:transparent;color:currentColor;font-size:1em;padding:0}.container{flex-grow:1;position:relative;width:auto}@media screen and (min-width:1024px){.container{max-width:960px}}@media screen and (min-width:1216px){.container:not(.is-max-desktop){max-width:1152px}}@media screen and (min-width:1408px){.container:not(.is-max-desktop):not(.is-max-widescreen){max-width:1344px}}.content blockquote:not(:last-child),.content dl:not(:last-child),.content ol:not(:last-child),.content p:not(:last-child),.content pre:not(:last-child),.content table:not(:last-child),.content ul:not(:last-child){margin-bottom:1em}@-webkit-keyframes moveIndeterminate{from{background-position:200%0}to{background-position:-200%0}}@keyframes moveIndeterminate{from{background-position:200%0}to{background-position:-200%0}}.title{word-break:break-word}.title{color:#363636;font-weight:600;line-height:1.125}.column{display:block;flex-basis:0;flex-grow:1;flex-shrink:1;padding:.75rem}@media screen and (min-width:769px),print{.column.is-one-fifth{flex:none;width:20%}}.columns{margin-left:-.75rem;margin-right:-.75rem;margin-top:-.75rem}.columns:last-child{margin-bottom:-.75rem}.columns:not(:last-child){margin-bottom:calc(1.5rem - .75rem)}@media screen and (min-width:769px),print{.columns:not(.is-desktop){display:flex}}.is-pulled-right{float:right!important}.has-text-centered{text-align:center!important}.sourceCode{overflow:visible}code.sourceCode{white-space:pre;position:relative}div.sourceCode{margin:1em 0}pre.sourceCode{margin:0}@media screen{div.sourceCode{overflow:auto}}code span.co{color:#60a0b0;font-style:italic}code span.fu{color:#06287e}code span.kw{color:#007020;font-weight:bold}code span.op{color:#666666}code span.st{color:#4070a0}code span.va{color:#19177c}section{margin-bottom:40px}.container{margin:40px auto}.posted{margin-top:18px}.article p{margin-top:12px;text-align:justify}.article pre{width:100%;white-space:pre-wrap;word-break:keep-all}.toc ul{margin-left:20px;list-style:none}.toc li:before{content:"";height:0;width:0;border-color:transparent rgb(50,115,220);border-style:solid;border-width:0.2em 0 0.2em 0.3em;position:relative;display:block;left:-0.6em;top:1em}h1,h2{font-weight:bold;margin-bottom:12px}h1.title{font-size:2.2em!important}h1{font-size:2em}h2{font-size:1.8em}</style>
+<meta http-equiv=content-security-policy content="default-src 'none'; font-src 'self' data:; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self' data:; script-src 'unsafe-inline' data:; object-src 'self' data:; frame-src 'self' data:;"><style>img[src="data:,"],source[src="data:,"]{display:none!important}</style></head>
+ <body>
+ <div class=container>
+
+ <div class=columns>
+ <div class="column toc is-one-fifth">
+ <p><a href=https://alpmestan.github.io/>Index</a></p>
+ <p><a href=https://alpmestan.github.io/notes/nixos-qemu.html>Deploying a NixOS configuration into a QEMU VM</a></p>
+ <ul>
+<li><a href=#the-system-configuration>The system configuration</a></li>
+<li><a href=#building-the-system>Building the system</a></li>
+<li><a href=#running-the-vm>Running the VM</a>
+<ul>
+<li><a href=#ssh-ing-into-the-vm>SSH-ing into the VM</a></li>
+</ul></li>
+</ul>
+ </div>
+ <div class=column>
+ <div class=columns>
+ <div class=column>
+ <h1 class=title>Deploying a NixOS configuration into a QEMU VM</h1>
+ </div>
+ <div class="column is-one-fifth posted is-pulled-right" style=color:#aaa>Posted on October 9, 2020</div>
+</div>
+<div class=article><p>Here is a simple way to deploy a NixOS configuration to a QEMU VM.</p>
+<section id=the-system-configuration class=level1>
+<h1>The system configuration</h1>
+<p>For demo purposes, we will be deploying a system that has OpenSSH, forwarding port 22 to the host so as to be able to ssh into the machine.</p>
+<div class=sourceCode id=cb1><pre class="sourceCode nix"><code class="sourceCode bash"><span id=cb1-1><a href=#cb1-1 aria-hidden=true></a><span class=co># demo.nix</span></span>
+<span id=cb1-2><a href=#cb1-2 aria-hidden=true></a><span class=kw>{</span> <span class=ex>pkgs</span>, lib, config, ... <span class=kw>}</span>:</span>
+<span id=cb1-3><a href=#cb1-3 aria-hidden=true></a></span>
+<span id=cb1-4><a href=#cb1-4 aria-hidden=true></a><span class=ex>with</span> lib<span class=kw>;</span></span>
+<span id=cb1-5><a href=#cb1-5 aria-hidden=true></a><span class=kw>{</span></span>
+<span id=cb1-6><a href=#cb1-6 aria-hidden=true></a>  <span class=ex>imports</span> = [</span>
+<span id=cb1-7><a href=#cb1-7 aria-hidden=true></a>    <span class=op>&lt;</span><span class=ex>nixpkgs/nixos/modules/profiles</span>/<span class=ex>qemu-guest.nix</span><span class=op>&gt;</span></span>
+<span id=cb1-8><a href=#cb1-8 aria-hidden=true></a>    <span class=op>&lt;</span><span class=ex>nixpkgs/nixos/modules/virtualisation</span>/<span class=ex>qemu-vm.nix</span><span class=op>&gt;</span></span>
+<span id=cb1-9><a href=#cb1-9 aria-hidden=true></a>    <span class=co># import your own NixOS modules here if needed</span></span>
+<span id=cb1-10><a href=#cb1-10 aria-hidden=true></a>  ];</span>
+<span id=cb1-11><a href=#cb1-11 aria-hidden=true></a></span>
+<span id=cb1-12><a href=#cb1-12 aria-hidden=true></a>  <span class=ex>config</span> = {</span>
+<span id=cb1-13><a href=#cb1-13 aria-hidden=true></a>    <span class=ex>nixpkgs.overlays</span> = [</span>
+<span id=cb1-14><a href=#cb1-14 aria-hidden=true></a>	  <span class=co># define or import overlays here</span></span>
+<span id=cb1-15><a href=#cb1-15 aria-hidden=true></a>	  <span class=co>#</span></span>
+<span id=cb1-16><a href=#cb1-16 aria-hidden=true></a>	  <span class=kw>(</span><span class=ex>self</span>: super: { }<span class=kw>)</span></span>
+<span id=cb1-17><a href=#cb1-17 aria-hidden=true></a>	  <span class=co># (import ./my-overlay.nix)</span></span>
+<span id=cb1-18><a href=#cb1-18 aria-hidden=true></a>    ];</span>
+<span id=cb1-19><a href=#cb1-19 aria-hidden=true></a></span>
+<span id=cb1-20><a href=#cb1-20 aria-hidden=true></a>    <span class=ex>services.qemuGuest.enable</span> = true<span class=kw>;</span></span>
+<span id=cb1-21><a href=#cb1-21 aria-hidden=true></a></span>
+<span id=cb1-22><a href=#cb1-22 aria-hidden=true></a>    <span class=ex>fileSystems.</span><span class=st>"/"</span> = {</span>
+<span id=cb1-23><a href=#cb1-23 aria-hidden=true></a>      <span class=ex>device</span> = <span class=st>"/dev/disk/by-label/nixos"</span><span class=kw>;</span></span>
+<span id=cb1-24><a href=#cb1-24 aria-hidden=true></a>      <span class=ex>fsType</span> = <span class=st>"ext4"</span><span class=kw>;</span></span>
+<span id=cb1-25><a href=#cb1-25 aria-hidden=true></a>      <span class=ex>autoResize</span> = true<span class=kw>;</span></span>
+<span id=cb1-26><a href=#cb1-26 aria-hidden=true></a>    <span class=kw>}</span>;</span>
+<span id=cb1-27><a href=#cb1-27 aria-hidden=true></a></span>
+<span id=cb1-28><a href=#cb1-28 aria-hidden=true></a>    <span class=ex>boot</span> = {</span>
+<span id=cb1-29><a href=#cb1-29 aria-hidden=true></a>      <span class=ex>growPartition</span> = true<span class=kw>;</span></span>
+<span id=cb1-30><a href=#cb1-30 aria-hidden=true></a>      <span class=ex>kernelParams</span> = [ <span class=st>"console=ttyS0 boot.shell_on_fail"</span> ]<span class=kw>;</span></span>
+<span id=cb1-31><a href=#cb1-31 aria-hidden=true></a>      <span class=ex>loader.timeout</span> = 5<span class=kw>;</span></span>
+<span id=cb1-32><a href=#cb1-32 aria-hidden=true></a>    };</span>
+<span id=cb1-33><a href=#cb1-33 aria-hidden=true></a></span>
+<span id=cb1-34><a href=#cb1-34 aria-hidden=true></a>    <span class=ex>virtualisation</span> = {</span>
+<span id=cb1-35><a href=#cb1-35 aria-hidden=true></a>      <span class=ex>diskSize</span> = 8000<span class=kw>;</span> # <span class=ex>MB</span></span>
+<span id=cb1-36><a href=#cb1-36 aria-hidden=true></a>      <span class=ex>memorySize</span> = 2048<span class=kw>;</span> # <span class=ex>MB</span></span>
+<span id=cb1-37><a href=#cb1-37 aria-hidden=true></a>      <span class=ex>writableStoreUseTmpfs</span> = false<span class=kw>;</span></span>
+<span id=cb1-38><a href=#cb1-38 aria-hidden=true></a>    };</span>
+<span id=cb1-39><a href=#cb1-39 aria-hidden=true></a></span>
+<span id=cb1-40><a href=#cb1-40 aria-hidden=true></a>    <span class=ex>services.openssh.enable</span> = true<span class=kw>;</span></span>
+<span id=cb1-41><a href=#cb1-41 aria-hidden=true></a>    <span class=ex>services.openssh.permitRootLogin</span> = <span class=st>"yes"</span><span class=kw>;</span></span>
+<span id=cb1-42><a href=#cb1-42 aria-hidden=true></a></span>
+<span id=cb1-43><a href=#cb1-43 aria-hidden=true></a>    <span class=ex>environment.systemPackages</span> = with pkgs<span class=kw>;</span></span>
+<span id=cb1-44><a href=#cb1-44 aria-hidden=true></a>      [ # <span class=ex>some</span> relevant packages here</span>
+<span id=cb1-45><a href=#cb1-45 aria-hidden=true></a>        <span class=ex>pkgs.ghc</span></span>
+<span id=cb1-46><a href=#cb1-46 aria-hidden=true></a>      ];</span>
+<span id=cb1-47><a href=#cb1-47 aria-hidden=true></a></span>
+<span id=cb1-48><a href=#cb1-48 aria-hidden=true></a>    <span class=co># we could alternatively hook root or a custom user</span></span>
+<span id=cb1-49><a href=#cb1-49 aria-hidden=true></a>    <span class=co># to some ssh key pair</span></span>
+<span id=cb1-50><a href=#cb1-50 aria-hidden=true></a>    <span class=ex>users.extraUsers.root.password</span> = <span class=st>""</span><span class=kw>;</span> # <span class=ex>oops</span></span>
+<span id=cb1-51><a href=#cb1-51 aria-hidden=true></a>    <span class=ex>users.mutableUsers</span> = false<span class=kw>;</span></span>
+<span id=cb1-52><a href=#cb1-52 aria-hidden=true></a>  };</span>
+<span id=cb1-53><a href=#cb1-53 aria-hidden=true></a>}</span></code></pre></div>
+</section>
+<section id=building-the-system class=level1>
+<h1>Building the system</h1>
+<p>We want to pass this configuration when instantiating the entire NixOS system, and say that we want to derive a VM from it. This can all be accomplished with this reasonably simple command:</p>
+<div class=sourceCode id=cb2><pre class="sourceCode sh"><code class="sourceCode bash"><span id=cb2-1><a href=#cb2-1 aria-hidden=true></a>$ <span class=ex>nix-build</span> <span class=st>'&lt;nixpkgs/nixos&gt;'</span> -A vm --arg configuration ./tde-host.nix</span>
+<span id=cb2-2><a href=#cb2-2 aria-hidden=true></a><span class=ex>these</span> derivations will be built:</span>
+<span id=cb2-3><a href=#cb2-3 aria-hidden=true></a>  <span class=ex>/nix/store/vlbc7mpmbmcalanbwmj1mwprfrya4izz-system-path.drv</span></span>
+<span id=cb2-4><a href=#cb2-4 aria-hidden=true></a>  <span class=ex>/nix/store/7srbcqni6sxpncnvn68015m9vmmp74ni-dbus-1.drv</span></span>
+<span id=cb2-5><a href=#cb2-5 aria-hidden=true></a>  <span class=ex>/nix/store/brax9nap3sbvqhvj6z8x6jx3r5gjwr5x-unit-dbus.service.drv</span></span>
+<span id=cb2-6><a href=#cb2-6 aria-hidden=true></a>  <span class=ex>/nix/store/ma234k9859hn4krv3f1h95m4mxb2aq8l-unit-polkit.service.drv</span></span>
+<span id=cb2-7><a href=#cb2-7 aria-hidden=true></a>  <span class=ex>/nix/store/ylrnqqm8vkrfcrgxb4g3fshslfnk8p3f-unit-systemd-fsck-.service.drv</span></span>
+<span id=cb2-8><a href=#cb2-8 aria-hidden=true></a>  <span class=ex>/nix/store/3prjamgmjhkw6slqgpnsgk3qpm1zjfia-system-units.drv</span></span>
+<span id=cb2-9><a href=#cb2-9 aria-hidden=true></a>  <span class=ex>/nix/store/jjzhp7x7hfw5sdlmysn4cbwjphrywjfg-unit-dbus.service.drv</span></span>
+<span id=cb2-10><a href=#cb2-10 aria-hidden=true></a>  <span class=ex>/nix/store/ls6kib0gqngpn4nb3bwfwrid4ig06l1y-user-units.drv</span></span>
+<span id=cb2-11><a href=#cb2-11 aria-hidden=true></a>  <span class=ex>/nix/store/gkqb5gpcldnjnppy4g2qh17xswlqxvv5-etc.drv</span></span>
+<span id=cb2-12><a href=#cb2-12 aria-hidden=true></a>  <span class=ex>/nix/store/zs8w34pglgq3iqka86fldklijqcp745q-nixos-system-nixos-20.03.1619.ab3adfe1c76.drv</span></span>
+<span id=cb2-13><a href=#cb2-13 aria-hidden=true></a>  <span class=ex>/nix/store/jcgk4sbr2ir4sbjvvkd63xrjis55c0ki-closure-info.drv</span></span>
+<span id=cb2-14><a href=#cb2-14 aria-hidden=true></a>  <span class=ex>/nix/store/l5srdimiiav2ix5ggcfcf8yzprs4c653-run-nixos-vm.drv</span></span>
+<span id=cb2-15><a href=#cb2-15 aria-hidden=true></a>  <span class=ex>/nix/store/8swgy4mkx9wkayy0yk0lyr07144c1fzs-nixos-vm.drv</span></span>
+<span id=cb2-16><a href=#cb2-16 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/vlbc7mpmbmcalanbwmj1mwprfrya4izz-system-path.drv'</span>...</span>
+<span id=cb2-17><a href=#cb2-17 aria-hidden=true></a><span class=ex>created</span> 5331 symlinks in user environment</span>
+<span id=cb2-18><a href=#cb2-18 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/7srbcqni6sxpncnvn68015m9vmmp74ni-dbus-1.drv'</span>...</span>
+<span id=cb2-19><a href=#cb2-19 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/ma234k9859hn4krv3f1h95m4mxb2aq8l-unit-polkit.service.drv'</span>...</span>
+<span id=cb2-20><a href=#cb2-20 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/ylrnqqm8vkrfcrgxb4g3fshslfnk8p3f-unit-systemd-fsck-.service.drv'</span>...</span>
+<span id=cb2-21><a href=#cb2-21 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/brax9nap3sbvqhvj6z8x6jx3r5gjwr5x-unit-dbus.service.drv'</span>...</span>
+<span id=cb2-22><a href=#cb2-22 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/jjzhp7x7hfw5sdlmysn4cbwjphrywjfg-unit-dbus.service.drv'</span>...</span>
+<span id=cb2-23><a href=#cb2-23 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/3prjamgmjhkw6slqgpnsgk3qpm1zjfia-system-units.drv'</span>...</span>
+<span id=cb2-24><a href=#cb2-24 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/ls6kib0gqngpn4nb3bwfwrid4ig06l1y-user-units.drv'</span>...</span>
+<span id=cb2-25><a href=#cb2-25 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/gkqb5gpcldnjnppy4g2qh17xswlqxvv5-etc.drv'</span>...</span>
+<span id=cb2-26><a href=#cb2-26 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/zs8w34pglgq3iqka86fldklijqcp745q-nixos-system-nixos-20.03.1619.ab3adfe1c76.drv'</span>...</span>
+<span id=cb2-27><a href=#cb2-27 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/jcgk4sbr2ir4sbjvvkd63xrjis55c0ki-closure-info.drv'</span>...</span>
+<span id=cb2-28><a href=#cb2-28 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/l5srdimiiav2ix5ggcfcf8yzprs4c653-run-nixos-vm.drv'</span>...</span>
+<span id=cb2-29><a href=#cb2-29 aria-hidden=true></a><span class=ex>building</span> <span class=st>'/nix/store/8swgy4mkx9wkayy0yk0lyr07144c1fzs-nixos-vm.drv'</span>...</span>
+<span id=cb2-30><a href=#cb2-30 aria-hidden=true></a><span class=ex>/nix/store/4ylbbc8c99f1l1k7x6k584xa018hi216-nixos-vm</span></span></code></pre></div>
+<p>(That last path is the one <code>./result</code> points to as well.)</p>
+</section>
+<section id=running-the-vm class=level1>
+<h1>Running the VM</h1>
+<p>You can then use <code>/nix/store/4ylbbc8c99f1l1k7x6k584xa018hi216-nixos-vm/bin/run-nixos-vm</code> or <code>result/bin/run-nixos-vm</code> to boot the resulting VM through QEMU. You will quite likely want to forward some ports, to be able to ssh into the VM and perhaps talk to some other services listening on some ports left open by the firewall. To accomplish this, you can set the <code>QEMU_NET_OPTS</code> env var before running the VM.</p>
+<p>For example, to forward the VM’s SSH port (<code>22</code>) to the host’s port <code>2221</code>, and the VM’s HTTP port (<code>80</code>) to the host’s <code>8080</code>, you could do (after making sure that <code>80</code> and <code>22</code> are in the VM configuration’s <code>networking.firewall.allowedTCPPorts</code>):</p>
+<div class=sourceCode id=cb3><pre class="sourceCode sh"><code class="sourceCode bash"><span id=cb3-1><a href=#cb3-1 aria-hidden=true></a>$ <span class=bu>export</span> <span class=va>QEMU_NET_OPTS=</span><span class=st>"hostfwd=tcp::2221-:22,hostfwd=tcp::8080-:80"</span></span>
+<span id=cb3-2><a href=#cb3-2 aria-hidden=true></a>$ <span class=ex>result/bin/run-nixos-vm</span></span></code></pre></div>
+<section id=ssh-ing-into-the-vm class=level2>
+<h2>SSH-ing into the VM</h2>
+<p><code>run-nixos-vm</code> waits for the VM process to be over, so fire up another terminal and write:</p>
+<div class=sourceCode id=cb4><pre class="sourceCode sh"><code class="sourceCode bash"><span id=cb4-1><a href=#cb4-1 aria-hidden=true></a>$ <span class=fu>ssh</span> -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no root@localhost -p 2221</span></code></pre></div>
+<p>When prompted for a password, just hit Enter (because of <code>users.extraUsers.root.password = ""</code>), and you should now be logged in as root in the VM.</p>
+</section>
+</section></div>
+ </div>
+ </div>
+ <div class="content has-text-centered">
+ <p>Powered by <a href=https://jaspervdj.be/hakyll/>Hakyll</a>
+ - <a href=https://alpmestan.github.io/rss.xml>RSS feed</a>
+ - <a href=https://alpmestan.github.io/servant/>servant paper</a>
+ </p>
+ </div>
+
+ <p></p>
+ </div>

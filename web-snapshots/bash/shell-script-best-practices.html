@@ -1,0 +1,147 @@
+<!DOCTYPE html> <html style lang=en><!--
+ Page saved with SingleFile
+ url: https://sharats.me/posts/shell-script-best-practices/
+--><meta charset=utf-8>
+<meta name=generator content=Pelican>
+<title>Shell Script Best Practices — The Sharat's</title>
+<meta name=viewport content="width=device-width">
+<style>*{box-sizing:border-box;scroll-behavior:smooth;scrollbar-color:#888 transparent;scrollbar-width:thin}html{--bg1:#FFF;--bg2:#F7F7F7;color:#222;--strong-fg:#000;--link-color:#08A;--font-mono:Consolas,Menlo,monospace;overflow-y:scroll}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg1);display:flex;flex-direction:column;align-items:center;font-family:-apple-system,BlinkMacSystemFont,"avenir next",avenir,"helvetica neue",helvetica,ubuntu,roboto,noto,"segoe ui",arial,sans-serif;font-size:18px;line-height:1.4}ol>li>ul{list-style:disc}:link,:visited{color:var(--link-color);word-break:break-word}h1,h2{font-family:inherit;margin:1.3em 0 .5em;color:var(--strong-fg)}h1{font-size:2.4em}h2{font-size:2em}pre,code{font-family:var(--font-mono);font-size:.9em;background-color:var(--bg2);font-variant-ligatures:none}pre{max-width:100%;padding:1em .5em;margin:0;overflow:auto;word-wrap:normal;word-break:normal;border:1px solid #EEE;border-radius:3px}code{padding:0 2px;white-space:pre-wrap}pre code{padding:0;background:transparent;font-size:1em;white-space:pre}main{width:100%;max-width:960px;padding:0 6px;flex-grow:1}header{width:100%;max-width:960px;display:flex;flex-direction:row;align-items:center;justify-content:space-between}.brand{font-size:1.3em;margin:.5em 0;line-height:1;padding:6px 12px}header nav a{margin:0 9px}header .compact{display:flex;align-items:stretch;justify-content:space-between}:is(input,textarea):focus{outline:none;border-color:var(--link-color)}main h1:first-child{margin:.3em 0 0}footer{border-top:1px solid #EEE;margin-top:2em;padding:1em}@keyframes ghost{from{opacity:1;transform:scale(1.5)}to{opacity:0;transform:translateY(-3em) scale(2.5)}}.hl{position:relative;display:grid;grid:auto auto/auto 1fr}.hl .content{grid-row:2/3;grid-column:2/3}del{color:#888}.hl :is(.c,.ch,.cm,.cp,.cpf,.c1,.cs){color:#8f5902}.hl .k{color:#204a87}.hl .o{color:#ce5c00}.hl .p{color:inherit}.hl :is(.kc,.kd,.kn,.kp,.kr,.kt){color:#204a87}.hl .nb{color:#05d}.hl :is(.mb,.mf,.mh,.mi,.mo,.il){color:#0000cf}.hl :is(.sa,.sb,.sc,.dl,.s2,.se,.sh,.si,.sx,.sr,.s1,.ss){color:#4e9a06}.hl :is(.fm,.vc,.vg,.vi,.vm,.nc,.no,.nf,.nn,.nx,.py,.nv){color:inherit}@media (max-width:350px){header{flex-direction:column}}@media (max-width:600px){ol,ul{padding-left:1.5em}pre{padding:6px}article>.hl{margin-left:-6px;margin-right:-6px;border-radius:0}pre{border-width:1px 0;border-style:solid;border-color:rgba(0,0,0,.06)}}@media screen{::selection{background:var(--link-color);color:white}}@media (hover:hover){a{text-decoration:none}a:hover{text-decoration:underline}}@media (prefers-color-scheme:dark){html{--bg1:#333;--bg2:#444;color:#EEE;--strong-fg:#F6F6F6;--link-color:#3BD}pre{border-color:#555}.hl{background:#272822;color:#f8f8f2}.hl .k{color:#66d9ef}.hl .o{color:#f92672}.hl .p{color:#f8f8f2}.hl :is(.ch,.cm,.cp,.cpf,.c1,.cs,.gu){color:#75715e}.hl :is(.nb,.ni,.nl,.nn,.py,.nv,.bp,.vc,.vg,.vi,.vm,.il){color:#f8f8f2}.hl :is(.mb,.mf,.mh,.mi,.mo){color:#ae81ff}.hl :is(.sa,.sb,.sc,.dl,.sd,.s2,.sh,.si,.sx,.sr,.s1,.ss){color:#e6db74}}</style>
+<link href=https://sharats.me/posts/index.xml type=application/atom+xml rel=alternate title="The Sharat's"><meta name=description content="This article is about a few quick thumb rules I use when writing shell scripts that I’ve come to appreciate over the years. Very opinionated....">	<link rel=alternate href=https://sharats.me/posts/index.xml type=application/atom+xml title="The Sharat's">
+<link type=image/x-icon rel="shortcut icon" href="data:image/vnd.microsoft.icon;base64,AAABAAEAICAAAAEAIACoEAAAFgAAACgAAAAgAAAAQAAAAAEAIAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAB/fwACqWUAfKtmAOaqZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6tmAOapZQB8f38AAqllAHyqZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+pZQB8q2YA5qpmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6tmAOaqZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/vYg5/97Enf/y6Nn/+vfy//fw5v/kz7D/wY9E/6pmAP+qZgD/qmYA/6pmAP+ubg7/z6pw/+rawP/48ur/+vbx/+/j0P/Vs4H/r28Q/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/7yGNf//////////////////////////////////////1bSC/6pmAP+qZgD/qmYA/+bStf/////////////////////////////////07N//tXkg/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/+vcxP/9/Pr/5M+v/9a1g//dw5v/+vbx////////////wY9E/6pmAP+qZgD/wZBG///////z6dv/2r2R/9e2hv/s3cf////////////r28L/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/uYEt/7V6If+qZgD/qmYA/6pmAP+3fij//Pr2///////l0LD/qmYA/6pmAP+qZgD/w5NL/6tnAv+qZgD/qmYA/6pmAP/fxqD///////////+6gzD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/m0rT///////bu4/+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/7yHNv///////////8uhY/+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/+XQsv//////+fTt/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/u4U0////////////zaZr/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+sagf/+fTs///////u4c3/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/RrHX////////////DlEz/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/8+pcf///////////9W0gv+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/rm0M//bv5f//////+/jz/65uDf+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+1eiH/+vfy///////79/P/snQY/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/bvpP////////////XuIr/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/rGoH/+3fyv///////////82laf+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/xphT///+/v//////8+rc/65tDP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/dw5v////////////kzq7/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/7h/Kv/79/L///////37+P+7hTT/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/zKNl////////////8+rd/69vEP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+vbw7/8ujY////////////zaZr/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/7mCLv/8+vf///////z6+P+6hDP/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/+LKqP///////////+LLqP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZwL/7d/L////////////zaVp/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/ElU/////////////y6Nn/rm4N/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/8WYU////////////+TOrf+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYB//Dk0////////fz6/7qDMf+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/5dGy///////9+/j/s3Yc/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+7hjX////////////bvpL/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/38ej//////+bStf+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/86ma////////////7uFNP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA//v59f//////4cml/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/0a12////////////tnwk/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/8OTT///////28Ob/r28P/6pmAP+qZgD/qmYA/6xpBf+qZgD/qmYA/6pmAP/GmVX////////////RrHX/qmYA/6pmAP+qZgD/rGkF/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP/Sr3n////////////z6dr/1LF+/9Ovev/r2sL/276T/6pmAP+qZgD/qmYA/65uDf/59O3///////79/P/fxqD/0Ktz/9u/lP/28Ob/s3Yb/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6xqB//q2cD////////////////////////////9+/j/tHcd/6pmAP+qZgD/qmYA/8SVT//9+/n////////////////////////////bwJX/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6xpBv/PqXD/7d7I//fy6f/17eH/5dGy/8icW/+raAP/qmYA/6pmAP+qZgD/qmYA/7qCL//hyKT/9Ove//jy6v/u4s7/2bqM/7V7I/+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/q2YA5qpmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6tmAOapZQB8qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qWUAfH9/AAKpZQB8q2YA5qpmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/qmYA/6pmAP+qZgD/q2YA5qllAHx/fwACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="><style>.sf-hidden{display:none!important}</style><link rel=canonical href=https://sharats.me/posts/shell-script-best-practices/><meta http-equiv=content-security-policy content="default-src 'none'; font-src 'self' data:; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self' data:; script-src 'unsafe-inline' data:; object-src 'self' data:; frame-src 'self' data:;"><style>img[src="data:,"],source[src="data:,"]{display:none!important}</style></head>
+<body>
+ <header>
+ <div class=compact>
+ <div class=brand><a href=https://sharats.me/ rel=home title="Go Home">The Sharat's</a></div>
+ </div>
+ <nav class=screen-only><a href=https://sharats.me/posts/>Posts</a><a href=https://sharats.me/labs/>Labs</a><a href=https://sharats.me/posts/index.xml title="Atom Feed">Feed</a></nav>
+ </header>
+ <main><h1>Shell Script Best Practices</h1>
+<time datetime=2022-10-27T00:00:00+05:30 style=font-size:.8em;color:#888>27 Oct 2022</time>
+<p class="print-only sf-hidden">
+</p>
+<p class="print-only sf-hidden">
+</p>
+<article><p>This article is about a few quick thumb rules I use when writing shell scripts that I’ve come to appreciate over the years. Very opinionated.</p>
+<h2 id=things>Things<a class="headerlink sf-hidden" href=#things title="Permanent link">¶</a></h2>
+<ol>
+<li>
+<p>Use <code>bash</code>. Using <code>zsh</code> or <code>fish</code> or any other, will make it hard for others to understand / collaborate. Among all shells, <code>bash</code> strikes a good balance between portability and DX.</p>
+</li>
+<li>
+<p>Just make the first line be <code>#!/usr/bin/env bash</code>, even if you don’t give executable permission to the script file.</p>
+</li>
+<li>
+<p>Use the <code>.sh</code> (or <code>.bash</code>) extension for your file. It may be fancy to not have an extension for your script, but unless your case explicitly depends on it, you’re probably just trying to do clever stuff. Clever stuff are hard to understand.</p>
+</li>
+<li>
+<p>Use <code>set -o errexit</code> at the start of your script.</p>
+<ul>
+<li>So that when a command fails, <code>bash</code> exits instead of continuing with the rest of the script.</li>
+</ul>
+</li>
+<li>
+<p>Prefer to use <code>set -o nounset</code>. You <em>may</em> have a good excuse to not do this, but, my opinion, it’s best to always set it.</p>
+<ul>
+<li>This will make the script fail, when accessing an unset variable. Saves from horrible unintended consequences, with typos in variable names.</li>
+<li>When you want to access a variable that may or may not have been set, use <code>"${VARNAME-}"</code> instead of <code>"$VARNAME"</code>, and you’re good.</li>
+</ul>
+</li>
+<li>
+<p>Use <code>set -o pipefail</code>. Again, you may have good reasons to not do this, but I’d recommend to always set it.</p>
+<ul>
+<li>This will ensure that a pipeline command is treated as failed, even if one command in the pipeline fails.</li>
+</ul>
+</li>
+<li>
+<p>Use <code>set -o xtrace</code>, with a check on <code>$TRACE</code> env variable.</p>
+<ul>
+<li>For copy-paste: <code>if [[ "${TRACE-0}" == "1" ]]; then set -o xtrace; fi</code>.</li>
+<li>This helps in debugging your scripts, a lot. Like, really lot.</li>
+<li>People can now <em>enable</em> debug mode, by running your script as <code>TRACE=1 ./script.sh</code> instead of <code>./script.sh</code>.</li>
+</ul>
+</li>
+<li>
+<p>Use <code>[[ ]]</code> for conditions in <code>if</code> / <code>while</code> statements, instead of <code>[ ]</code> or <code>test</code>.</p>
+<ul>
+<li><code>[[ ]]</code> is a bash <del>builtin</del> keyword, and is more powerful than <code>[ ]</code> or <code>test</code>.</li>
+</ul>
+</li>
+<li>
+<p>Always quote variable accesses with double-quotes.</p>
+<ul>
+<li>One place where it’s <em>okay</em> not to is on the <em>left-hand-side</em> of an <code>[[ ]]</code> condition. But even there I’d recommend quoting.</li>
+<li>When you need the unquoted behaviour, using <code>bash</code> arrays will likely serve you much better.</li>
+</ul>
+</li>
+<li>
+<p>Use <code>local</code> variables in functions.</p>
+</li>
+<li>
+<p>Accept multiple ways that users can ask for help and respond in kind.</p>
+<ul>
+<li>Check if the first arg is <code>-h</code> or <code>--help</code> or <code>help</code> or just <code>h</code> or even <code>-help</code>, and in all these cases, print help text and exit.</li>
+<li>Please. For the sake of your future-self.</li>
+</ul>
+</li>
+<li>
+<p>When printing error messages, please redirect to stderr.</p>
+<ul>
+<li>Use <code>echo 'Something unexpected happened' &gt;&amp;2</code> for this.</li>
+</ul>
+</li>
+<li>
+<p>Use long options, where possible (like <code>--silent</code> instead of <code>-s</code>). These serve to document your commands explicitly.</p>
+<ul>
+<li>Note though, that commands shipped on some systems like macOS don’t always have long options.</li>
+</ul>
+</li>
+<li>
+<p>If appropriate, change to the script’s directory close to the start of the script.</p>
+<ul>
+<li>And it’s usually always appropriate.</li>
+<li>Use <code>cd "$(dirname "$0")"</code>, which works in <em>most</em> cases.</li>
+</ul>
+</li>
+<li>
+<p>Use <code>shellcheck</code>. Heed its warnings.</p>
+</li>
+</ol>
+<h2 id=template>Template<a class="headerlink sf-hidden" href=#template title="Permanent link">¶</a></h2>
+<div class=hl><pre class=content><code><span class=ch>#!/usr/bin/env bash</span>
+
+<span class=nb>set</span> -o errexit
+<span class=nb>set</span> -o nounset
+<span class=nb>set</span> -o pipefail
+<span class=k>if</span> <span class=o>[[</span> <span class=s2>"</span><span class=si>${</span><span class=nv>TRACE</span><span class=p>-0</span><span class=si>}</span><span class=s2>"</span> <span class=o>==</span> <span class=s2>"1"</span> <span class=o>]]</span><span class=p>;</span> <span class=k>then</span>
+    <span class=nb>set</span> -o xtrace
+<span class=k>fi</span>
+
+<span class=k>if</span> <span class=o>[[</span> <span class=s2>"</span><span class=si>${</span><span class=nv>1</span><span class=p>-</span><span class=si>}</span><span class=s2>"</span> <span class=o>=</span>~ ^-*h<span class=o>(</span>elp<span class=o>)</span>?$ <span class=o>]]</span><span class=p>;</span> <span class=k>then</span>
+    <span class=nb>echo</span> <span class=s1>'Usage: ./script.sh arg-one arg-two</span>
+
+<span class=s1>This is an awesome bash script to make your life better.</span>
+
+<span class=s1>'</span>
+    <span class=nb>exit</span>
+<span class=k>fi</span>
+
+<span class=nb>cd</span> <span class=s2>"</span><span class=k>$(</span>dirname <span class=s2>"</span><span class=nv>$0</span><span class=s2>"</span><span class=k>)</span><span class=s2>"</span>
+
+main<span class=o>()</span> <span class=o>{</span>
+    <span class=nb>echo</span> <span class=k>do</span> awesome stuff
+<span class=o>}</span>
+
+main <span class=s2>"</span><span class=nv>$@</span><span class=s2>"</span>
+</code></pre><div class="btns sf-hidden"></div></div>
+<h2 id=conclusion>Conclusion<a class="headerlink sf-hidden" href=#conclusion title="Permanent link">¶</a></h2>
+<p>I try to follow these rules in my scripts, and they’re known to have made at least my own life better. I’m still not consistent though, unfortunately, in following my own rules. So perhaps writing them down this way will help me improve there as well.</p>
+<p>Do you have anything you think I should add to this? Please share in the comments!</p>
+<p>Edit 1: Included fixes from HN comments at <a href="https://news.ycombinator.com/item?id=33355407" rel="noopener noreferrer" target=_blank>https://news.ycombinator.com/item?id=33355407</a> and <a href="https://news.ycombinator.com/item?id=33355077" rel="noopener noreferrer" target=_blank>https://news.ycombinator.com/item?id=33355077</a>.</p>
+<p>Edit 2: Fix from <a href="https://news.ycombinator.com/item?id=33354759" rel="noopener noreferrer" target=_blank>https://news.ycombinator.com/item?id=33354759</a>.</p></article><p><b>Discuss on</b>: <a target=_blank href="https://news.ycombinator.com/item?id=33354286">Hacker News</a>.</p></main>
+ <footer>
+ © 2010–2023 Shrikant Sharat Kandula. Source on <a href=https://github.com/sharat87/sharats.me target=_blank rel=noopener>GitHub</a>.
+ Content licensed with <a href=https://sharats.me/licenses/cc-by/>CC-BY</a>, and code with <a href=https://sharats.me/licenses/mit/>MIT License</a>.
+ </footer>
+
+
+ <noscript class=sf-hidden><img src="https://queue.simpleanalyticscdn.com/noscript.gif" alt="" referrerpolicy="no-referrer-when-downgrade"></noscript>

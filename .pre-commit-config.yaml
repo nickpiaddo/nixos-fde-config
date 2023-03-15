@@ -12,7 +12,7 @@ repos:
     -   id: end-of-file-fixer
     -   id: check-yaml
     -   id: check-added-large-files
-        args: ['--maxkb=10240']
+        args: ['--maxkb=51200']
     -   id: detect-private-key
   # Typos
   # Error: Could not start dynamically linked executable:
