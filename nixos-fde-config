@@ -5,8 +5,18 @@
 
 ################################################################################
 # Description
+# nixos-fde-config:
+#   script for configuring a NixOS system with full disk encryption.
 #
-# script:
+#   This script creates a LUKS2 encrypted container on the given main disk,
+#   then adds three ext4-formatted LVM volumes (root, swap, home).
+#
+#   The LUKS2 container's header-file, along with a decryption key-file are
+#   added as a compressed, passphrase-protected archive to a UEFI boot partition
+#   on the USB boot-key.
+#
+#   After a successful setup, the boot-key is required to boot the system.
+#   You will also need to provide your passphrase to mount the filesystem.
 #
 ################################################################################
 
@@ -24,7 +34,7 @@ set -o pipefail
 shopt -s globstar
 shopt -s nullglob
 
-# Run script `TRACE=1 ./script [options]' to enable tracing
+# Run script `TRACE=1 ./nixos-fde-config [options]' to enable tracing
 if [[ "${TRACE-0}" == "1" ]]; then
   set -o xtrace
 fi
@@ -82,9 +92,37 @@ function printVersion {
 ######################################################################
 function printUsage {
   cat <<-END
-   $(bold "USAGE")
+   $(bold USAGE)
+
+       $(basename "$0") -m DEVPATH -b DEVPATH -R SIZE -S SIZE [-H SIZE]
+                        [--skip-wipe-disks]
 
        $(basename "$0") --help
+
+       $(basename "$0") --version
+
+   $(bold EXAMPLES)
+
+       Configure a system with a bootkey at /dev/sdb, a main disk at /dev/sda
+       with a 16G root partition, 8G of swap, and a 64G /home partition.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 64G
+
+       By default, not specifying the size of the home partition will allocate
+       all remaining free space to it. In the example below, the home partition
+       will have size home_size = disk_size - (root_size + swap_size).
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G
+
+       If you do not want a dedicated partition for the /home directory, set
+       its size to zero.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 0
+
+      Equally, if you want a system without a swap partition set its value to
+      zero.
+
+           $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 0 -H 0
 END
 }
 
