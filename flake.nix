@@ -41,6 +41,9 @@
             just
 
             # For unit and integration testing
+            expect
+            inetutils
+            ncurses
             nixos-generators
             OVMF
             openssh
@@ -48,6 +51,8 @@
             python313
             python313Packages.uv
             qemu
+            tcl
+            tcllib
 
             # For code linting and formatting
             doctoc
