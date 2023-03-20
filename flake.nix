@@ -26,12 +26,12 @@
         semver = "0.1.0";
         date = builtins.substring 0 8 lastModifiedDate;
         revision = self.shortRev or "dirty";
-        version = "${semver}-${date}.${revision}";
+        pkgVersion = "${semver}-${date}.${revision}";
 
         # Nixpkgs instantiated for supported system types.
         pkgs = import nixpkgs { inherit system; };
 
-      in
+      in rec
       {
         # Development environment
         devShell = pkgs.mkShell {
@@ -40,16 +40,25 @@
             # Command runner
             just
 
+             # Markdown
+            glow
+            pandoc
+            lynx
+            w3m
+
             # For unit and integration testing
+            bats
             expect
             inetutils
             ncurses
             nixos-generators
             OVMF
             openssh
+            parallel
             passh
             python313
             python313Packages.uv
+            python313Packages.pytest
             qemu
             tcl
             tcllib
@@ -67,6 +76,11 @@
             shfmt
             typos
           ];
+
+          # Initialize submodules if necessary.
+          shellHook = ''
+              ./scripts/init-repo-submodules
+            '';
         };
       });
 }

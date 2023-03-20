@@ -1,0 +1,351 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# build-test-harness:
+#   Install Bash Automated Testing System (BATS) libraries in a directory.
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./build-test-harness [options]' to enable tracing
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+################################################################################
+#                        GLOBAL VARIABLES
+################################################################################
+OUTPUT_DIR=""
+
+################################################################################
+#                        HELPER FUNCTIONS
+################################################################################
+
+######################################################################
+# Print usage.
+# Arguments:
+#   None
+# Outputs:
+#   Usage instructions
+######################################################################
+function printUsage {
+  local bold
+  local bold_off
+  bold=$(tput bold)
+  bold_off=$(tput sgr0)
+
+  underline=$(tput smul)
+  underline_off=$(tput rmul)
+
+  cat <<-END
+   ${bold}USAGE${bold_off}
+
+       build-test-harness -o ${underline}output_directory${underline_off}
+END
+}
+
+######################################################################
+# Print help page.
+# Arguments:
+#   None
+# Outputs:
+#   Usage manual
+######################################################################
+function printHelp {
+  local bold
+  local bold_off
+  bold=$(tput bold)
+  bold_off=$(tput sgr0)
+
+  underline=$(tput smul)
+  underline_off=$(tput rmul)
+
+  cat <<-END
+   ${bold}USAGE${bold_off}
+
+       $(basename "$0") -o ${underline}output_directory${underline_off}
+
+       $(basename "$0") -test-harness --help
+
+   ${bold}DESCRIPTION${bold_off}
+
+       Install Bash Automated Testing System (BATS) libraries bats-assert,
+       bats-file, and bats-support in the output directory.
+
+       Create the directory if it does not exist.
+
+   ${bold}OPTIONS${bold_off}
+
+       -h, --help       Display this help and exit.
+       -o, --output     Specify BATS library files location.
+
+       Command parameters:
+
+       ${underline}output_directory${underline_off}     Location of the cloned BATS repos.
+END
+}
+
+#### ERROR MANAGEMENT FUNCTIONS
+
+######################################################################
+# Print error message and terminate program.
+# Arguments:
+#   Error message
+# Outputs:
+#   Writes error message to stderr
+# Returns:
+#   Exit code 1
+######################################################################
+function error {
+  local red_bg
+  local red_bg_off
+
+  red_bg=$(tput setab 1)
+  red_bg_off=$(tput sgr0)
+
+  echo -e "${red_bg}Error:${red_bg_off} $*" >&2
+  exit 1
+}
+
+######################################################################
+# Execute an error function if a predicate function returns false.
+# Arguments:
+#   Predicate function
+#   Argument of the predicate function
+#   Error function to execute if assertion is false
+#   Error message
+# Outputs:
+#   Nothing if the predicate is true. The error function's output
+#   otherwise.
+######################################################################
+function assert {
+  local predFun="$1"
+  local pred_arg="$2"
+  local errorFun="$3"
+  local error_arg="$4"
+
+  if ! $predFun "${pred_arg}"; then
+    $errorFun "${error_arg}"
+  fi
+}
+
+#### CONVERSION FUNCTIONS
+
+######################################################################
+# Convert a short option to its long version
+# Arguments:
+#   Short option
+# Returns:
+#   Long version of the given short option
+#   Empty string otherwise
+######################################################################
+function toLongOption {
+  local short_option="$1"
+
+  case "${short_option}" in
+    '-h') echo '--help' ;;
+    '-o') echo '--output' ;;
+    *) echo "" ;;
+  esac
+}
+
+#### UTILITY FUNCTIONS
+
+######################################################################
+# Concatenate two strings separated by the given separator character
+# if the two strings are non-empty. Returns an empty string or whichever
+# of the two is non-empty otherwise.
+#
+# Examples:
+#
+#   concat ';' '' ''       --> ''
+#   concat ';' '' 'bar'    --> 'bar'
+#   concat ';' 'foo' ''    --> 'foo'
+#   concat ';' 'foo' 'bar' --> 'foo;bar'
+#
+# Arguments:
+#   Separator character
+#   First string
+#   Second string
+# Returns:
+#   Concatenated strings
+######################################################################
+function concat {
+  # No argument or just the separator
+  if [[ $# -eq 0 || $# -eq 1 ]]; then
+    echo ""
+  # Separator + one string
+  elif [[ $# -eq 2 ]]; then
+    echo "$2"
+  # Separator + two strings
+  else
+    local separator="$1"
+    local first="$2"
+    local second="$3"
+
+    # concat ';' '' ''
+    if [[ -z "${first}" && -z "${second}" ]]; then
+      echo ""
+    # concat ';' '' 'bar'
+    elif [[ -z "${first}" && -n "${second}" ]]; then
+      echo "${second}"
+    # concat ';' 'foo' ''
+    elif [[ -n "${first}" && -z "${second}" ]]; then
+      echo "${first}"
+    # concat ';' 'foo' 'bar'
+    else
+      echo "${first}${separator}${second}"
+    fi
+  fi
+}
+
+######################################################################
+# Find the option at the given index in the string
+# Arguments:
+#   Index
+#   String
+# Returns:
+#   First option at index
+#   Empty string if there is none
+######################################################################
+function findOptionAt {
+  local index="$1"
+  local argument_list="$2"
+  echo "${argument_list}" | cut --delimiter=' ' --fields="${index}"
+}
+
+#### PREDICATE FUNCTIONS
+
+######################################################################
+# Test if a path leads to a directory or does not exist.
+# Arguments:
+#   Path
+# Returns:
+#   True if Path is a directory or does not exist
+#   False otherwise
+######################################################################
+function isDirectoryOrDoesNotExist { [[ -d "$1" || ! -e "$1" ]]; }
+
+######################################################################
+# Test if a variable is set.
+# Arguments:
+#   Variable value
+# Returns:
+#   True if variable is not empty
+#   False otherwise
+######################################################################
+function isSet { [[ -n "$1" ]]; }
+
+#### PARSER FUNCTIONS
+
+######################################################################
+# Parse output option value.
+# Arguments:
+#   Directory path
+# Returns:
+#   Normalized directory path
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if path exists but does not point to a directory.
+######################################################################
+function parseOutputDirectory {
+  local directory_path="$1"
+
+  assert isDirectoryOrDoesNotExist "${directory_path}" \
+    error "'${directory_path}' is not a directory."
+
+  if [[ -e "${directory_path}" ]]; then
+    realpath "${directory_path}"
+  else
+    echo "${directory_path}"
+  fi
+}
+
+#### OUTPUT FORMATTING FUNCTIONS
+
+function heading {
+  local bold
+  local bold_off
+
+  bold=$(tput bold)
+  bold_off=$(tput sgr0)
+
+  echo -e "${bold}$1 ${bold_off}"
+}
+
+################################################################################
+#                        MAIN PROGRAM
+################################################################################
+
+if [[ $# -eq 0 ]]; then
+  printUsage
+  exit 1
+fi
+
+# From https://stackoverflow.com/a/30026641
+# Long option to short option substitution
+for arg in "$@"; do
+  shift
+  case "$arg" in
+    '--help') set -- "$@" '-h' ;;
+    '--output') set -- "$@" '-o' ;;
+    *) set -- "$@" "$arg" ;;
+  esac
+done
+
+# Parse short option value
+OPTIND=1
+while getopts ":ho:" short_option; do
+  case "${short_option}" in
+    h)
+      printHelp
+      exit 0
+      ;;
+    o) OUTPUT_DIR="$(parseOutputDirectory "${OPTARG}")" ;;
+    :) error "Option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
+    ?)
+      case "${OPTARG}" in
+        '-') INDEX=${OPTIND} ;;
+        *) INDEX=$((OPTIND - 1)) ;;
+      esac
+      error "Unknown option: $(findOptionAt "${INDEX}" "${*}")"
+      ;;
+  esac
+done
+
+# Remove parsed options from script argument list
+shift $((OPTIND - 1))
+
+# Check that mandatory global variables are set
+assert isSet "${OUTPUT_DIR}" \
+  error "The option '-o, --output' is mandatory."
+
+# Create output directory if necessary
+if [[ ! -d "${OUTPUT_DIR}" ]]; then
+  mkdir -p "${OUTPUT_DIR}"
+fi
+
+heading "Installing BATS libraries at: ${OUTPUT_DIR}"
+
+git submodule add https://github.com/bats-core/bats-support.git "${OUTPUT_DIR}/test_helper/bats-support"
+git submodule add https://github.com/bats-core/bats-assert.git "${OUTPUT_DIR}/test_helper/bats-assert"
+git submodule add https://github.com/bats-core/bats-file.git "${OUTPUT_DIR}/test_helper/bats-file"
+git submodule update --init --recursive
