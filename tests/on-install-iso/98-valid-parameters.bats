@@ -8,5 +8,7 @@ setup() {
 }
 
 @test "Running nixos-fde-config with valid parameters succeeds" {
-  assert [ 0 -eq 0 ]
+  run bash -c "${SSH} /root/nixos-fde-config -t"
+
+  assert_success
 }

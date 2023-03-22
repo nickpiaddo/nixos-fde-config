@@ -53,6 +53,7 @@ HOME_SIZE=""
 WIPE_DISKS=true
 RESUME=false
 CHECKPOINT_ID=""
+RUNNING_TEST=0
 
 ################################################################################
 #                        HELPER FUNCTIONS
@@ -435,6 +436,18 @@ function saveCheckPoint {
     ${HOME_SIZE} ${WIPE_DISKS} ${CHECKPOINT_ID}" >|"${TMP_FILE}"
 }
 
+#### PREDICATE FUNCTIONS
+
+######################################################################
+# Test if unit tests are being run
+# Arguments:
+#   None
+# Returns:
+#   True if unit tests are running
+#   False otherwise
+######################################################################
+function isRunningUnitTest { [[ ${RUNNING_TEST} -eq 1 ]]; }
+
 ################################################################################
 #                        MAIN PROGRAM
 ################################################################################
@@ -458,12 +471,13 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hyz" short_option; do
+while getopts ":htyz" short_option; do
   case "${short_option}" in
     h)
       printHelp
       exit 0
       ;;
+    t) RUNNING_TEST=1 ;;
     y)
       printVersion
       exit 0
@@ -480,6 +494,15 @@ while getopts ":hyz" short_option; do
   esac
 done
 
+# Raise an error if script not run by a user with root privileges
+if ! isRunningUnitTest; then
+  if [[ $(id -u) -ne 0 ]]; then
+    echo -e "run $(basename "$0") as root, or issue the command\n"
+    echo "    $(bold sudo) $(basename "$0") $*"
+    exit 1
+  fi
+fi
+
 # Remove parsed options from script argument list
 shift $((OPTIND - 1))
 
@@ -487,6 +510,11 @@ if [[ "${RESUME}" == "true" ]]; then
   # Restore global options variables to their last saved state
   loadCheckPoint
   heading "********** Resuming execution              **********"
+fi
+
+# Stop script execution beyond this point and signal success
+if isRunningUnitTest; then
+  exit 0
 fi
 
 trap messageOnAbort EXIT
