@@ -1,0 +1,217 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "pexpect",
+#     "typer",
+# ]
+# ///
+
+import pexpect
+import subprocess
+import time
+import typer
+
+from pathlib import Path
+from rich import print
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from typing_extensions import Annotated
+
+
+app = typer.Typer(rich_markup_mode="markdown")
+
+@app.command()
+def main(config: Annotated[Path,
+                           typer.Argument(metavar="CONFIG_FILE",
+                                          help="Specify the path to an ISO building configuration file",
+                                          show_default=False,
+                                          exists=True,
+                                          file_okay=True,
+                                          dir_okay=False)],
+         output_dir: Annotated[Path,
+                           typer.Option("--output",
+                                        "-o",
+                                        metavar="DIR",
+                                        help="Specify the directory to write the files output by the command into",
+                                        show_default="Current directory",
+                                        file_okay=False,
+                                        dir_okay=True)] = '.',
+         monitor_port: Annotated[int,
+                           typer.Option(metavar="MON_PORT",
+                                          help="Specify the telnet port of the Virtual Machine monitor")]=45454,
+         ssh_port: Annotated[int,
+                           typer.Option(metavar="SSH_PORT",
+                                          help="Specify the SSH port of the guest VM")]=2222,
+         snapshot: Annotated[str,
+                           typer.Option("--save-snapshot",
+                                        "-s",
+                                        metavar="TAG_ID",
+                                        help="Specify the tag ID of the VM snapshot to save",
+                                        show_default=False)] = ""):
+    """
+    Build the components of a virtual machine (VM) specified in CONFIG_FILE, to
+    setup and test a full-disk encrypted NixOS.
+
+    The virtual environment will simulate a machine with the following
+    components:
+
+    - a UEFI booting firmware
+
+    - a minimal NixOS install ISO
+
+    - a hard drive (to hold a full-disk encrypted system)
+
+    - a USB key (to hold a UEFI boot partition)
+
+
+
+    If a TAG_ID is provided, the program will start, then save a snapshot of
+    the virtual machine when it is at the user login screen.
+
+
+
+    Examples
+
+
+
+    $ build-vm iso.nix --output vm/ --save-snapshot basevm
+    """
+    # Create output directory if provided
+    if not output_dir.exists():
+        print(f"Creating directory: {output_dir}")
+        subprocess.run(["mkdir", "-p", output_dir])
+
+    # Create NixOS minimal installation ISO
+    iso_file = output_dir / 'nixos-minimal-linux.iso'
+    if not iso_file.exists():
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            # See https://github.com/Textualize/rich/blob/master/rich/_spinners.py
+            # for `spinner_name` values
+            SpinnerColumn(spinner_name="bouncingBall"),
+            transient=True,
+        ) as progress:
+            progress.add_task(description="Building installation ISO...", total=None)
+            out_link = output_dir / 'result'
+            iso_dir = out_link / 'iso'
+            nixos_minimal = output_dir / 'nixos-minimal-linux.iso'
+
+            # Generate custom ISO from configuration file
+            subprocess.run(["nixos-generate", "--format", "iso", "--configuration", config, "--out-link", out_link])
+            # Give ISO a generic name
+            subprocess.run(["cp", next(iso_dir.glob('*.iso')), nixos_minimal])
+            print("Built installation ISO")
+
+    # Convert TianoCore UEFI firmware to qcow2
+    uefi_code = output_dir / 'OVMF_CODE.fd.qcow2'
+    uefi_vars = output_dir / 'OVMF_VARS.fd.qcow2'
+    if not (uefi_code.exists() and uefi_vars.exists()):
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            SpinnerColumn(spinner_name="bouncingBall"),
+            transient=True,
+        ) as progress:
+            progress.add_task(description="Creating UEFI firmware...", total=None)
+            nix_ovmf = Path('/run/libvirt/nix-ovmf/')
+            for (input, output) in [(nix_ovmf / 'OVMF_CODE.fd', uefi_code),
+                                    (nix_ovmf / 'OVMF_VARS.fd', uefi_vars)]:
+                subprocess.run(["qemu-img", "convert", "-O", "qcow2", input, output])
+            print("Created UEFI firmware")
+
+    # Create disks
+    main_drive = output_dir / 'fde-maindrive-32GB.qcow2'
+    bootkey = output_dir / 'bootkey-3GB.qcow2'
+    smallkey = output_dir / 'smallkey-1GB.qcow2'
+    if not (main_drive.exists() and bootkey.exists() and smallkey.exists()):
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            SpinnerColumn(spinner_name="bouncingBall"),
+            transient=True,
+        ) as progress:
+            progress.add_task(description="Creating VM disks...", total=None)
+            for (disk, size) in [(main_drive, "32G"), (bootkey, "3G"), (smallkey, "1G")]:
+                subprocess.run(["qemu-img", "create", "-q" , "-f", "qcow2", disk, size])
+            print("Created VM disks")
+
+    dest = ""
+    if not output_dir == Path('.'):
+        dest = " at: " + str(output_dir)
+
+    if snapshot:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            # See https://github.com/Textualize/rich/blob/master/rich/_spinners.py
+            # for `spinner_name` values
+            SpinnerColumn(spinner_name="bouncingBall"),
+            transient=True,
+        ) as progress:
+          progress.add_task(description=f"Saving VM snapshot: {snapshot}", total=None)
+          print(f"Starting virtual machine at: {output_dir}")
+          print(f"> QEMU monitor listening on port: {monitor_port}")
+          print(f"> SSH server listening on port: {ssh_port}")
+
+          args = ["qemu-system-x86_64",
+                  "-nographic",
+                  "-monitor", f"telnet::{monitor_port},server,nowait",
+                  "-enable-kvm",
+                  #"-m", "size=256M,slots=16,maxmem=4G",
+                  "-m", "4G",
+                  "-nic", f"user,hostfwd=tcp::{ssh_port}-:22",
+                  "-drive", f"if=pflash,format=qcow2,readonly=on,file={output_dir}/OVMF_CODE.fd.qcow2",
+                  "-drive", f"if=pflash,format=qcow2,file={output_dir}/OVMF_VARS.fd.qcow2",
+                  "-drive", f"if=none,id=cdrom,format=raw,readonly=on,file={output_dir}/nixos-minimal-linux.iso",
+                  "-device", "ide-cd,drive=cdrom,bootindex=2",
+                  "-device", "nec-usb-xhci,id=xhci",
+                  "-drive", f"if=none,id=bootkey,format=qcow2,file={output_dir}/bootkey-3GB.qcow2",
+                  "-device", "usb-storage,bus=xhci.0,drive=bootkey,bootindex=1",
+                  "-drive", f"if=none,id=smallkey,format=qcow2,file={output_dir}/smallkey-1GB.qcow2",
+                  "-device", "usb-storage,bus=xhci.0,drive=smallkey",
+                  "-drive", f"if=none,id=maindrive,format=qcow2,file={output_dir}/fde-maindrive-32GB.qcow2",
+                  "-device", "ide-hd,drive=maindrive"]
+
+          # Start VM
+          vm = pexpect.spawn(" ".join(args))
+          match vm.expect(['nixos@nixos', 'Connection refused', pexpect.TIMEOUT], timeout=1200):
+            case 0:
+              pass
+            case 1:
+              print(f"[bold red]Error:[/bold red] Found no running virtual machine.")
+              exit(1)
+            case 2:
+              print(f"[red]Error:[/red] Operation timed out after {vm.timeout} seconds.")
+              exit(1)
+            case _:
+              print(f"[red]Error:[/red] Unexpected event.")
+              exit(1)
+
+          # Save VM state
+          telnet = pexpect.spawn(f"telnet localhost {monitor_port}")
+          match telnet.expect(['(qemu)', 'Connection refused', pexpect.TIMEOUT]):
+            case 0:
+              telnet.sendline(f"savevm {snapshot}")
+            case 1:
+              print(f"[bold red]Error:[/bold red] Found no running virtual machine.")
+              exit(1)
+            case 2:
+              print(f"[red]Error:[/red] Operation timed out after {vm.timeout} seconds.")
+              exit(1)
+            case _:
+              print(f"[red]Error:[/red] Unexpected event.")
+              exit(1)
+
+          match telnet.expect(['(qemu)', pexpect.TIMEOUT]):
+            case 0:
+              telnet.sendline("quit")
+            case 1:
+              print(f"[red]Error:[/red] Operation timed out after {vm.timeout} seconds.")
+              exit(1)
+            case _:
+              print(f"[red]Error:[/red] Unexpected event.")
+              exit(1)
+
+          vm.expect(pexpect.EOF)
+
+    print(f"[bold]Created virtual machine{dest}[/bold]")
+
+if __name__ == "__main__":
+    app()

@@ -42,6 +42,10 @@
 
             # For unit and integration testing
             nixos-generators
+            OVMF
+            python313
+            python313Packages.uv
+            qemu
 
             # For code linting and formatting
             doctoc
