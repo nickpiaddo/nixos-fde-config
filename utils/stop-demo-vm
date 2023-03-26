@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# stop-test-vm:
+#   stops a demo virtual machine.
+#   QEMU monitor port: telnet 45400
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./stop-test-vm' to enable debug mode
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+BASE_DIR="$(realpath "${DIR}/../")"
+SCRIPTS_DIR="${BASE_DIR}/scripts"
+
+"${SCRIPTS_DIR}"/stop-vm 45400

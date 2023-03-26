@@ -1,0 +1,547 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# build-demo-vm:
+#   Build the components of a demo virtual machine to simulate a
+#   full-disk encrypted NixOS system.
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./build-demo-vm [options]' to enable debug mode
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+################################################################################
+#                        GLOBAL VARIABLES
+################################################################################
+
+ISO_CONFIG_FILE=""
+OUTPUT_DIR=""
+VM_MONITOR_PORT=""
+VM_SSH_PORT=""
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+BASE_DIR="$(realpath "${DIR}/../")"
+SCRIPTS_DIR="${BASE_DIR}/scripts"
+
+################################################################################
+#                        HELPER FUNCTIONS
+################################################################################
+
+#### OUTPUT FORMATTING FUNCTIONS
+
+function formatText {
+  # escape character start
+  local on="$1"
+  # escape character end
+  local off="$2"
+  local text="$3"
+
+  echo -ne "${on}${text}${off}"
+}
+
+function bold { formatText "$(tput bold)" "$(tput sgr0)" "$1"; }
+function underline { formatText "$(tput smul)" "$(tput rmul)" "$1"; }
+
+function heading { printf "%s\n" "$(bold "$1") "; }
+
+function subheading { echo "> $1"; }
+
+#### MAIN HELPER FUNCTIONS
+
+######################################################################
+# Print usage.
+# Arguments:
+#   None
+# Outputs:
+#   Usage instructions
+######################################################################
+function printUsage {
+  cat <<-END
+   $(bold USAGE)
+
+       build-demo-vm -c $(underline iso_config_file)  -d $(underline dummy_config_file)
+                        -o $(underline output_directory) -m $(underline vm_monitor_port)
+                        -p $(underline vm_ssh_port)
+
+       build-demo-vm --help
+
+END
+}
+
+######################################################################
+# Print help page.
+# Arguments:
+#   None
+# Outputs:
+#   Usage manual
+######################################################################
+function printHelp {
+  cat <<-END
+   $(bold USAGE)
+
+       build-demo-vm -c $(underline iso_config_file)  -d $(underline dummy_config_file)
+                        -o $(underline output_directory) -m $(underline vm_monitor_port)
+                        -p $(underline vm_ssh_port)
+
+       build-demo-vm --help
+
+   $(bold DESCRIPTION)
+
+        Build the components of a demo virtual machine to simulate a
+        full-disk encrypted NixOS system.
+
+   $(bold OPTIONS)
+
+       -h, --help              Display this help and exit.
+       -c, --iso-config        Specify ISO configuration file.
+       -d, --dummy-config      Specify dummy VM configuration file.
+       -o, --output-dir        Specify VM files location. Create the directory if
+                               it does not exist.
+       -m, --vm-monitor-port   Specify VM monitor port.
+       -p, --vm-ssh-port       Specify VM SSH port.
+
+       Command parameters:
+
+       $(underline iso_config_file)      ISO building configuration file.
+       $(underline dummy_config_file)    Dummy VM configuration file.
+       $(underline output_directory)     Location of the generated VM files.
+       $(underline vm_monitor_port)      Telnet port to access the VM's QEMU monitor.
+       $(underline vm_ssh_port)          SSH redirection port.
+
+END
+}
+
+#### ERROR MANAGEMENT FUNCTIONS
+
+######################################################################
+# Print error message and terminate program.
+# Arguments:
+#   Error message
+# Outputs:
+#   Writes error message to stderr
+# Returns:
+#   Exit code 1
+######################################################################
+function error {
+  local red_bg
+  local red_bg_off
+
+  red_bg=$(tput setab 1)
+  red_bg_off=$(tput sgr0)
+
+  echo -e "${red_bg}Error:${red_bg_off} $*" >&2
+  exit 1
+}
+
+######################################################################
+# Execute an error function if a predicate function returns false.
+# Arguments:
+#   Predicate function
+#   Argument of the predicate function
+#   Error function to execute if assertion is false
+#   Error message
+# Outputs:
+#   Nothing if the predicate is true. The error function's output
+#   otherwise.
+######################################################################
+function assert {
+  local pred_fun="$1"
+  local pred_arg="$2"
+  local error_fun="$3"
+  local error_arg="$4"
+
+  if ! $pred_fun "${pred_arg}"; then
+    $error_fun "${error_arg}"
+  fi
+}
+
+#### CONVERSION FUNCTIONS
+
+######################################################################
+# Convert from a short option to its corresponding long option.
+# Arguments:
+#   Short option
+# Returns:
+#   Long version of the given short option
+#   Empty string otherwise
+######################################################################
+function toLongOption {
+  local short_option="$1"
+
+  case "${short_option}" in
+    '-h') echo '--help' ;;
+    '-c') echo '--iso-config' ;;
+    '-d') echo '--dummy-config' ;;
+    '-o') echo '--output' ;;
+    '-m') echo '--vm-monitor-port' ;;
+    '-p') echo '--vm-monitor-port' ;;
+    *) echo "" ;;
+  esac
+}
+
+#### UTILITY FUNCTIONS
+
+######################################################################
+# Concatenate two strings separated by the given separator character
+# if the two strings are non-empty. Returns an empty string or whichever
+# of the two is non-empty otherwise.
+#
+# Examples:
+#
+#   concat ';' '' ''       --> ''
+#   concat ';' '' 'bar'    --> 'bar'
+#   concat ';' 'foo' ''    --> 'foo'
+#   concat ';' 'foo' 'bar' --> 'foo;bar'
+#
+# Arguments:
+#   Separator character
+#   First string
+#   Second string
+# Returns:
+#   Concatenated strings
+######################################################################
+function concat {
+  # No argument or just the separator
+  if [[ $# -eq 0 || $# -eq 1 ]]; then
+    echo ""
+  # Separator + one string
+  elif [[ $# -eq 2 ]]; then
+    echo "$2"
+  # Separator + two strings
+  else
+    local separator="$1"
+    local first="$2"
+    local second="$3"
+
+    # concat ';' '' ''
+    if [[ -z "${first}" && -z "${second}" ]]; then
+      echo ""
+    # concat ';' '' 'bar'
+    elif [[ -z "${first}" && -n "${second}" ]]; then
+      echo "${second}"
+    # concat ';' 'foo' ''
+    elif [[ -n "${first}" && -z "${second}" ]]; then
+      echo "${first}"
+    # concat ';' 'foo' 'bar'
+    else
+      echo "${first}${separator}${second}"
+    fi
+  fi
+}
+
+######################################################################
+# Find the option at the given index in the string
+# Arguments:
+#   Index
+#   String
+# Returns:
+#   First option at index
+#   Empty string if there is none
+######################################################################
+function findOptionAt {
+  local index="$1"
+  local argument_list="$2"
+  echo "${argument_list}" | cut --delimiter=' ' --fields="${index}"
+}
+
+#### PREDICATE FUNCTIONS
+
+######################################################################
+# Test if a path leads to a file.
+# Arguments:
+#   Path
+# Returns:
+#   True if Path is a file
+#   False otherwise
+######################################################################
+function isFile { [[ -f "$1" ]]; }
+
+######################################################################
+# Test if a path leads to a directory or does not exist.
+# Arguments:
+#   Path
+# Returns:
+#   True if Path is a directory or does not exist
+#   False otherwise
+######################################################################
+function isDirectoryOrDoesNotExist { [[ -d "$1" || ! -e "$1" ]]; }
+
+######################################################################
+# Test if a variable is set.
+# Arguments:
+#   Variable value
+# Returns:
+#   True if variable is not empty
+#   False otherwise
+######################################################################
+function isSet { [[ -n "$1" ]]; }
+
+######################################################################
+# Test if a string represents an integer
+# Arguments:
+#   Number
+# Returns:
+#   True if the string represents an integer
+#   False otherwise
+######################################################################
+function isInteger { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+######################################################################
+# Test if the given number is valid port number
+# Arguments:
+#   Size in with optional unit
+# Returns:
+#   True if the port number is in a valid range
+#   False otherwise
+######################################################################
+function isPortNumber { [[ 1 -le $1 && $1 -le 65535 ]]; }
+
+#### PARSER FUNCTIONS
+
+######################################################################
+# Parse iso-config option value.
+# Arguments:
+#   File path
+# Returns:
+#   Normalized file path
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if path does not point to a file.
+######################################################################
+function parseISOConfigFile {
+  local file_path="$1"
+
+  assert isFile "${file_path}" \
+    error "'${file_path}' is not a file."
+
+  realpath "${file_path}"
+}
+
+######################################################################
+# Parse dummy-config option value.
+# Arguments:
+#   File path
+# Returns:
+#   Normalized file path
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if path does not point to a file.
+######################################################################
+function parseDummyConfigFile {
+  local file_path="$1"
+
+  assert isFile "${file_path}" \
+    error "'${file_path}' is not a file."
+
+  realpath "${file_path}"
+}
+
+######################################################################
+# Parse output option value.
+# Arguments:
+#   Directory path
+# Returns:
+#   Normalized directory path
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if path exists but does not point to a directory.
+######################################################################
+function parseOutputDirectory {
+  local directory_path="$1"
+
+  assert isDirectoryOrDoesNotExist "${directory_path}" \
+    error "'${directory_path}' is not a directory."
+
+  if [[ -e "${directory_path}" ]]; then
+    realpath "${directory_path}"
+  else
+    echo "${directory_path}"
+  fi
+}
+
+######################################################################
+# Parse vm-monitor-port option value.
+# Arguments:
+#   Port number
+# Returns:
+#   The given port number, if valid
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if port number is not an integer or within the range
+#   of acceptable port numbers 1-65535
+######################################################################
+function parseVMMonitorPort {
+  local port_number="$1"
+
+  assert isInteger "${port_number}" \
+    error "'${port_number}' is not an integer."
+
+  assert isPortNumber "${port_number}" \
+    error "'${port_number}' is not within the range 1-65535."
+
+  echo "${port_number}"
+}
+
+######################################################################
+# Parse vm-ssh-port option value.
+# Arguments:
+#   Port number
+# Returns:
+#   The given port number, if valid
+#   Exit code 1, otherwise
+# Outputs:
+#   Error message if port number is not an integer or within the range
+#   of acceptable port numbers (0-65535]
+######################################################################
+function parseVMSshPort {
+  local port_number="$1"
+
+  assert isInteger "${port_number}" \
+    error "'${port_number}' is not an integer."
+
+  assert isPortNumber "${port_number}" \
+    error "'${port_number}' is not within the range 1-65535."
+
+  echo "${port_number}"
+}
+
+################################################################################
+#                        MAIN PROGRAM
+################################################################################
+
+if [[ $# -eq 0 ]]; then
+  printUsage
+  exit 1
+fi
+
+# From https://stackoverflow.com/a/30026641
+# Long option to short option substitution
+for arg in "$@"; do
+  shift
+  case "$arg" in
+    '--help') set -- "$@" '-h' ;;
+    '--iso-config') set -- "$@" '-c' ;;
+    '--dummy-config') set -- "$@" '-d' ;;
+    '--output-dir') set -- "$@" '-o' ;;
+    '--vm-monitor-port') set -- "$@" '-m' ;;
+    '--vm-ssh-port') set -- "$@" '-p' ;;
+    *) set -- "$@" "$arg" ;;
+  esac
+done
+
+# Parse short option value
+OPTIND=1
+while getopts ":hc:o:d:m:p:" short_option; do
+  case "${short_option}" in
+    h)
+      printHelp
+      exit 0
+      ;;
+    c) ISO_CONFIG_FILE="$(parseISOConfigFile "${OPTARG}")" ;;
+    d) DUMMY_CONFIG_FILE="$(parseDummyConfigFile "${OPTARG}")" ;;
+    o) OUTPUT_DIR="$(parseOutputDirectory "${OPTARG}")" ;;
+    m) VM_MONITOR_PORT=$(parseVMMonitorPort "${OPTARG}") ;;
+    p) VM_SSH_PORT=$(parseVMSshPort "${OPTARG}") ;;
+    :) error "Option $(concat ', ' "-${OPTARG}" "$(toLongOption "-${OPTARG}")") requires an argument." ;;
+    ?)
+      case "${OPTARG}" in
+        '-') INDEX=${OPTIND} ;;
+        *) INDEX=$((OPTIND - 1)) ;;
+      esac
+      error "Unknown option: $(findOptionAt "${INDEX}" "${*}")"
+      ;;
+  esac
+done
+
+# Remove parsed options from script argument list
+shift $((OPTIND - 1))
+
+# Check that mandatory global variables are set
+assert isSet "${ISO_CONFIG_FILE}" \
+  error "The option '-c, --config' is mandatory."
+assert isSet "${OUTPUT_DIR}" \
+  error "The option '-o, --output-dir' is mandatory."
+assert isSet "${VM_MONITOR_PORT}" \
+  error "The option '-m, --vm-monitor-port' is mandatory."
+assert isSet "${VM_SSH_PORT}" \
+  error "The option '-p, --vm-ssh-port' is mandatory."
+
+"${SCRIPTS_DIR}"/build-vm "${ISO_CONFIG_FILE}" -o "${OUTPUT_DIR}" \
+  --monitor-port "${VM_MONITOR_PORT}" \
+  --ssh-port "${VM_SSH_PORT}"
+
+heading "NixOS Installation"
+subheading "Starting demo VM..."
+
+SSH_OPTIONS="\
+  -oUserKnownHostsFile=/dev/null \
+  -oStrictHostKeyChecking=no \
+  -oPasswordAuthentication=yes"
+
+SSH="passh -p {} ssh root@localhost -p ${VM_SSH_PORT} -t ${SSH_OPTIONS}"
+
+SCP="passh -p {} scp -P ${VM_SSH_PORT} ${SSH_OPTIONS}"
+
+expect -c "
+  set timeout -1
+  match_max 100000
+  spawn ${SCRIPTS_DIR}/start-vm ${OUTPUT_DIR} ${VM_MONITOR_PORT} ${VM_SSH_PORT} --no-graphic
+  expect \"nixos login: nixos (automatic login)\"
+
+  puts \"\n> Copying executable and configuration files to demo VM...\n\"
+  spawn ${SCP} ${BASE_DIR}/nixos-fde-config ${DUMMY_CONFIG_FILE} root@localhost:~/
+  expect eof
+
+  puts  \"> Configuring and installing NixOS...\n\"
+  spawn ${SSH} /root/nixos-fde-config -x -m /dev/sda -b /dev/sdb -R 16G -S 4G -H 10G
+  puts \"> Setting decryption passphrase...\n\"
+  # Set passphrase for decryption of encrypted LUKS2 header and key archive
+  expect \"Enter passphrase \"
+  send -- \"nixos\n\"
+  expect \"Confirm passphrase: \"
+  send -- \"nixos\n\"
+  expect \"Hit q to exit\"
+  send -- \"q\"
+  expect eof
+
+  # Initialize demo-vm configuration
+  puts \"> Initializing system configuration...\n\"
+  spawn ${SSH} cp /root/demo-vm-configuration.nix /mnt/etc/nixos/configuration.nix
+  expect eof
+
+  # Install NixOS
+  puts \"> Installing software packages...\n\"
+  spawn ${SSH} nixos-install --no-root-password
+  expect -exact \"installation finished!\"
+
+  # Save bootkey hash
+  puts  \"> Saving bootkey hash...\n\"
+  spawn ${SSH} /root/nixos-fde-config --save-hash /dev/sdb1
+  expect eof
+
+  # Shutdown
+  spawn ${SCRIPTS_DIR}/stop-vm ${VM_MONITOR_PORT}
+  expect eof"
+
+heading "Installation successful. Created demo VM at: ${OUTPUT_DIR}"

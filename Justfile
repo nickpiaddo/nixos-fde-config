@@ -1,11 +1,13 @@
 alias ct := check-typos
 alias t   := test
+alias ti  := test-integration
 alias tu  := test-unit
 alias tuc := test-unit-config
 alias tuo := test-unit-options
 alias sv  := start-test-vm
 alias xv  := stop-test-vm
 alias clt := clean-test-vm
+alias cld := clean-demo-vm
 
 # List recipes
 default:
@@ -44,6 +46,23 @@ clean-test-vm:
   else:
     print("Aborted!")
 
+# Delete demo VM
+clean-demo-vm:
+  #!/usr/bin/env -S uv run --script
+  # /// script
+  # requires-python = ">=3.13"
+  # dependencies = [
+  #     "click",
+  # ]
+  # ///
+  import click
+  import subprocess
+
+  if click.confirm("Would you like to delete the demo VM?"):
+    subprocess.run(["rm", "-r", "-f", "area51/demo-vm"])
+  else:
+    print("Aborted!")
+
 # Run all unit tests
 test: test-options test-config
 
@@ -51,6 +70,12 @@ test: test-options test-config
 test-config:
   @echo "Unit Test System Configuration:"
   @bats --timing --jobs 4 tests/on-install-iso/system-configuration
+
+# Run integration tests
+test-integration:
+  @echo "Use the command below in another terminal to monitor the test's progress"
+  @echo "    tail -f /tmp/bats-run**/suite.out"
+  @bats --timing --jobs 4 --no-parallelize-within-files tests/on-demo-vm
 
 # Run all CLI option parsing unit tests
 test-options:

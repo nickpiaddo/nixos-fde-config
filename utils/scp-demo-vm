@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# ssh-demo-vm:
+#   SCP wrapper to copy files from/to a demo virtual machine.
+#   SSH port: 2200
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./scp-demo-vm' to enable debug mode
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+passh -p 'nixos' scp -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no \
+  -oPasswordAuthentication=yes -P 2200 -- "$@"
