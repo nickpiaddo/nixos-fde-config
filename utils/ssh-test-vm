@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2023 Nick Piaddo
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+################################################################################
+# Description
+#
+# ssh-test-vm:
+#   SSH wrapper to connect to a virtual machine to test the `nixos-fde-config`
+#   script.
+#   QEMU monitor port: telnet 45454
+#   SSH port: 2222
+#
+################################################################################
+
+# Coding convention
+#
+# CAPITAL_SNAKE_CASE: global variable
+# snake_case: local variable
+# camelCase: function
+
+# Script template inspired by
+# https://sharats.me/posts/shell-script-best-practices/
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s globstar
+shopt -s nullglob
+
+# Run script `TRACE=1 ./ssh-test-vm' to enable debug mode
+if [[ "${TRACE-0}" == "1" ]]; then
+  set -o xtrace
+fi
+
+passh -p '' ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no \
+  -oPasswordAuthentication=yes root@localhost -p 2222 -t "$@"
