@@ -3,7 +3,7 @@
 
 setup_suite() {
   DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
-  BASE_DIR="$(realpath "${DIR}/../..")"
+  BASE_DIR="$(realpath "${DIR}/../../..")"
   TEST_DIR="${BASE_DIR}/tests"
 
   DEFAULT_SSH_PORT=2222

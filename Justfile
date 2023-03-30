@@ -1,6 +1,7 @@
 alias ct := check-typos
 alias t   := test
 alias tu  := test-unit
+alias tuo := test-unit-options
 alias sv  := start-test-vm
 alias xv  := stop-test-vm
 alias clt := clean-test-vm
@@ -43,9 +44,17 @@ clean-test-vm:
     print("Aborted!")
 
 # Run all unit tests
-test:
-  @bats --timing --jobs 4 tests/on-install-iso
+test: test-options
+
+# Run all CLI option parsing unit tests
+test-options:
+  @echo "Unit Test CLI Option Parsing:"
+  @bats --timing --jobs 4 tests/on-install-iso/option-parsing
 
 # Only run tests that match the regular expression REGEX
-test-unit REGEX:
-  @bats --timing --jobs 4 --filter {{REGEX}} tests/on-install-iso
+test-unit REGEX: (test-unit-options REGEX)
+
+# Only run CLI option parsing unit tests that match the regular expression REGEX
+test-unit-options REGEX:
+  @echo "Unit Test CLI Option Parsing:"
+  @bats --timing --jobs 4 --filter {{REGEX}} tests/on-install-iso/option-parsing

@@ -1280,7 +1280,9 @@ if [[ "${RESUME}" == false ]]; then
   countDown 5 "Starting in 5 seconds"
 fi
 
-# Stop script execution beyond this point and signal success
+# Stop script execution beyond this point and signal success while running
+# unit-tests. Acts as a separator between pure operations and those with
+# side-effects. Activated by the -t flag on the command line.
 if isRunningUnitTest; then
   exit 0
 fi
