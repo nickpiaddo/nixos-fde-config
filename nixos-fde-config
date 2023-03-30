@@ -685,6 +685,93 @@ function listNLargestFilesOnPartition {
 
 function list5LargestFilesOnPartition { listNLargestFilesOnPartition 5 "$1"; }
 
+######################################################################
+# Print summary of partition structure.
+# Arguments:
+#   Main disk path
+#   Main disk size
+#   Boot key path
+#   Boot key size
+#   Root partition size
+#   Swap partition size
+#   Homw partition size
+# Outputs:
+#   Summary of partition structure
+######################################################################
+function printSummary {
+  local main_disk="$1"
+  local main_disk_size="$2"
+  local boot_key="$3"
+  local boot_key_size="$4"
+  local root_size="$5"
+  local swap_size="$6"
+  local home_size="$7"
+
+  main_disk_size="$(byteToString "${main_disk_size}")"
+  boot_key_size="$(byteToString "${boot_key_size}")"
+
+  main_disk="$(basename "${main_disk}")"
+  boot_key="$(basename "${boot_key}")"
+
+  root_size="$(byteToString "${root_size}")"
+  swap_size="$(byteToString "${swap_size}")"
+  home_size="$(byteToString "${home_size}")"
+
+  printf "\nCreating a NixOS system with the following partition layout:\n\n"
+  printf "%s\n" "$(bold "main disk:")"
+  printf "  %-19s  %8s   %s\n" "NAME" "SIZE" "TYPE"
+  printf "  %-19s  %8s   %s\n" "${main_disk}" "${main_disk_size}" "disk"
+  printf "  %-23s  %8s   %s\n" "└─lukscontainer" "${main_disk_size}" "crypt"
+
+  # No home or swap partitions
+  if [[ ${SWAP_SIZE} -eq 0 && ${HOME_SIZE} -eq 0 ]]; then
+    printf "  %-23s  %8s   %s\n" "  └─-root" "${root_size}" "lvm"
+  # One of or both home and swap partitions
+  else
+    printf "  %-23s  %8s   %s\n" "  ├─-root" "${root_size}" "lvm"
+  fi
+
+  # Only a swap partitions
+  if [[ ${SWAP_SIZE} -gt 0 && ${HOME_SIZE} -eq 0 ]]; then
+    printf "  %-23s  %8s   %s\n" "  └─-swap" "${swap_size}" "lvm"
+  # Both home and swap partitions
+  elif [[ ${SWAP_SIZE} -gt 0 && ${HOME_SIZE} -gt 0 ]]; then
+    printf "  %-23s  %8s   %s\n" "  ├─-swap" "${swap_size}" "lvm"
+  fi
+
+  if [[ ${HOME_SIZE} -gt 0 ]]; then
+    printf "  %-23s  %8s   %s\n" "  └─-home" "${home_size}" "lvm"
+  fi
+
+  printf "\n"
+  printf "%s\n" "$(bold "bootkey:")"
+  printf "  %-19s  %8s   %s\n" "NAME" "SIZE" "TYPE"
+  printf "  %-19s  %8s   %s\n" "${boot_key}" "${boot_key_size}" "disk"
+  printf "  %-23s  %8s   %s\n" "└─${boot_key}1" "2GiB" "part"
+  printf "\n"
+}
+
+######################################################################
+# Print a message and count down for n seconds.
+# Arguments:
+#   Duration
+#   Message
+# Outputs:
+#   Message
+######################################################################
+function countDown {
+  local duration="$1"
+  local message="$2"
+
+  echo -n "${message}"
+
+  for i in $(seq "${duration}"); do
+    echo -n "."
+    sleep 1
+  done
+  echo ""
+}
+
 #### STATE MANAGEMENT FUNCTIONS
 
 ######################################################################
@@ -1181,6 +1268,16 @@ if [[ "${RESUME}" == false ]]; then
       confirmContinue "The installation process will permanently delete the device content listed above!"
     fi
   fi
+fi
+
+if [[ "${RESUME}" == false ]]; then
+  # Show planned partition layout
+  BOOT_KEY_SIZE=$(blockdev --getsize64 "${BOOT_KEY}")
+
+  printSummary "${MAIN_DISK}" "${MAIN_DISK_SIZE}" "${BOOT_KEY}" "${BOOT_KEY_SIZE}" \
+    "${ROOT_SIZE}" "${SWAP_SIZE}" "${HOME_SIZE}"
+
+  countDown 5 "Starting in 5 seconds"
 fi
 
 # Stop script execution beyond this point and signal success
