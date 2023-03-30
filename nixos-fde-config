@@ -583,6 +583,108 @@ function max {
   fi
 }
 
+######################################################################
+# List partitions on device.
+# Arguments:
+#   Absolute device path
+# Returns:
+#   A list of device partitions
+#   Empty string, if there are none
+######################################################################
+function listPartitions {
+  local device="$1"
+
+  for part_num in $(parted -m "${device}" print 2>/dev/null \
+    | grep -P "^[0-9]+:" | cut -d ':' -f 1); do
+    echo "${device}${part_num}"
+  done
+}
+
+######################################################################
+# List the files on a partition ordered by decreasing order of size.
+# Arguments:
+#   File system type
+#   Partition
+# Returns:
+#   A list of the n largest files on the partition
+#   Empty string, if there are none
+######################################################################
+function listFilesOnPartition {
+  local fs_type="$1"
+  local partition="$2"
+  local files
+
+  if [[ -z "${fs_type}" ]]; then
+    files="no file system"
+  else
+    local mount_point
+    mount_point="$(lsblk --list --noheadings --output MOUNTPOINTS "${partition}")"
+
+    # Partition NOT mounted
+    if [[ -z "${mount_point}" ]]; then
+      # Mount partition (read only)
+      local tmp_dir
+      tmp_dir="$(mktemp --directory --tmpdir=/tmp tmp-mount.XXXXXXXXXX)"
+      mount --types "${fs_type}" --options noatime,noexec,ro "${partition}" "${tmp_dir}"
+
+      # List files
+      files="$(find "${tmp_dir}" -type f -exec ls -lSh {} + 2>/dev/null \
+        | sed "s_""${tmp_dir}/""__")"
+
+      if [[ -z "${files}" ]]; then
+        files="no files"
+      fi
+
+      # Unmount partition
+      umount "${tmp_dir}" 2>/dev/null
+      rmdir "${tmp_dir}"
+    else
+      files="$(find "${mount_point}" -type f -exec ls -lSh {} + 2>/dev/null)"
+    fi
+  fi
+
+  echo "${files}"
+}
+
+######################################################################
+# List the N largest files on a partition.
+# Arguments:
+#   Maximum number of files
+#   Device partition
+# Returns:
+#   A list of the n largest files on the partition
+#   Empty string, if there are none
+######################################################################
+function listNLargestFilesOnPartition {
+  local limit="$1"
+  local partition="$2"
+
+  local part_info
+  local part_type
+  local fs_type
+  local files
+  local nb_lines
+
+  part_info="$(lsblk --list --noheadings --output TYPE,FSTYPE "${partition}" -- 2>/dev/null)"
+  part_type="$(echo "${part_info}" | awk '{print $1}')"
+  fs_type="$(echo "${part_info}" | awk '{print $2}')"
+
+  case "${part_type}" in
+    'crypt') files="*** encrypted ***" ;;
+    *) files="$(listFilesOnPartition "${fs_type}" "${partition}")" ;;
+  esac
+
+  printf "%s:\n%s\n" "$(bold "${partition}")" "$(echo "${files}" | head --lines="${limit}")"
+
+  nb_lines=$(echo "${files}" | wc --lines)
+
+  if [[ ${nb_lines} -gt ${limit} ]]; then
+    printf "... truncated ...\n\n"
+  fi
+}
+
+function list5LargestFilesOnPartition { listNLargestFilesOnPartition 5 "$1"; }
+
 #### STATE MANAGEMENT FUNCTIONS
 
 ######################################################################
@@ -763,6 +865,16 @@ function isNotZero { [[ "$1" -ne 0 ]]; }
 #   False otherwise
 ######################################################################
 function isInteger { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+######################################################################
+# Test if the length of a string is zero.
+# Arguments:
+#   String
+# Returns:
+#   True if the string has length zero
+#   False otherwise
+######################################################################
+function isEmpty { [[ -z "$1" ]]; }
 
 #### PARSER FUNCTIONS
 
@@ -1056,6 +1168,19 @@ if [[ "${RESUME}" == false ]]; then
     error \
     "not enough empty space to store metadata and partitions.
        Need at least $(byteToString "${TOTAL_INSTALL_SIZE}"), but has only $(byteToString "${MAIN_DISK_SIZE}") available. Remember that 16MiB are reserved for storing metadata."
+
+  # Ask for confirmation before destroying existing partitions on main disk and boot-key
+  if ! isRunningUnitTest; then
+    PARTITION_LIST="$(concat "\n" "$(listPartitions "${MAIN_DISK}")" "$(listPartitions "${BOOT_KEY}")")"
+
+    if ! isEmpty "${PARTITION_LIST}"; then
+      echo -e "Found existing data on one or both of the following devices: ${MAIN_DISK}, ${BOOT_KEY} :\n"
+      for partition in ${PARTITION_LIST}; do
+        printf "%s\n\n" "$(list5LargestFilesOnPartition "${partition}")"
+      done
+      confirmContinue "The installation process will permanently delete the device content listed above!"
+    fi
+  fi
 fi
 
 # Stop script execution beyond this point and signal success
