@@ -74,6 +74,9 @@
             shellcheck
             shfmt
             typos
+
+            # For screen recording
+            termtosvg
           ];
 
           # Initialize submodules if necessary.
