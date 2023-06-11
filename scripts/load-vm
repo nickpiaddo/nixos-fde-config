@@ -1,0 +1,89 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "pexpect",
+#     "typer",
+# ]
+# ///
+
+import pexpect
+import typer
+
+from rich import print
+from typing_extensions import Annotated
+
+app = typer.Typer(rich_markup_mode="markdown")
+
+@app.command()
+def main(monitor_port: Annotated[int,
+                           typer.Argument(metavar="MON_PORT",
+                                          help="Specify the telnet port of the Virtual Machine monitor",
+                                          show_default=False)],
+         snapshot: Annotated[str,
+                           typer.Argument(metavar="TAG_ID",
+                                        help="Specify the VM snapshot to load",
+                                        show_default=False)] = ""):
+    """
+    Load a snapshot with TAG_ID on a virtual machine (VM) with a QEMU monitor
+    listening on port MON_PORT.
+
+
+
+    Examples
+
+
+
+     $ load-vm 45454 basevm
+    """
+    print(f"Loading virtual machine snapshot...")
+    print(f"> Connecting to QEMU monitor on port: {monitor_port}")
+
+    child_proc = pexpect.spawn(f"telnet localhost {monitor_port}")
+
+    match child_proc.expect(['(qemu)', 'Connection refused', pexpect.TIMEOUT], timeout=120):
+      case 0:
+        print(f"> Sending command: 'loadvm {snapshot}'")
+        child_proc.sendline(f"loadvm {snapshot}")
+      case 1:
+        print(f"[bold red]Error:[/bold red] Found no running virtual machine.")
+        exit(1)
+      case 2:
+        print(f"[red]Error:[/red] Operation timed out after {child_proc.timeout} seconds.")
+        exit(1)
+      case _:
+        print(f"[red]Error:[/red] Unexpected event.")
+        exit(1)
+
+    match child_proc.expect(['(qemu)', pexpect.TIMEOUT]):
+      case 0:
+        child_proc.send(f"")
+      case 1:
+        print(f"[red]Error:[/red] Operation timed out after {child_proc.timeout} seconds.")
+        exit(1)
+      case _:
+        print(f"[red]Error:[/red] Unexpected event.")
+        exit(1)
+
+    match child_proc.expect(['telnet>', pexpect.TIMEOUT]):
+      case 0:
+        child_proc.sendline("quit")
+      case 1:
+        print(f"[red]Error:[/red] Operation timed out after {child_proc.timeout} seconds.")
+        exit(1)
+      case _:
+        print(f"[red]Error:[/red] Unexpected event.")
+        exit(1)
+
+    match child_proc.expect(['Connection closed', pexpect.TIMEOUT]):
+      case 0:
+        print(f"[bold]Loaded snapshot: {snapshot}[/bold]")
+      case 1:
+        print(f"[red]Error:[/red] Operation timed out after {child_proc.timeout} seconds.")
+        exit(1)
+      case _:
+        print(f"[red]Error:[/red] Unexpected event.")
+        exit(1)
+
+if __name__ == "__main__":
+    app()
