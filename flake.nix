@@ -90,6 +90,8 @@
             version = "${semver}";
             src = ./.;
 
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
             dontUnpack = true;
             dontPatch = true;
             dontConfigure = true;
@@ -105,6 +107,13 @@
                 # Set version string
                 sed -i s/##version##/v${version}/ $out/bin/nixos-fde-config
                 sed -i s/##revision##/rev#${revision}/ $out/bin/nixos-fde-config
+
+                runHook postInstall
+              '';
+
+            postInstall = ''
+                # Install bash completion file
+                installShellCompletion --bash --name nixos-fde-config.bash $src/nixos-fde-config-completion.bash
               '';
           };
         };
