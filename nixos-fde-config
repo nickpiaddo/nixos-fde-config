@@ -110,6 +110,8 @@ function printUsage {
        $(basename "$0") -m DEVPATH -b DEVPATH -R SIZE -S SIZE [-H SIZE]
                         [--skip-wipe-disks]
 
+       $(basename "$0") --save-hash DEVPATH
+
        $(basename "$0") --help
 
        $(basename "$0") --reset
@@ -156,6 +158,8 @@ function printHelp {
 
        $(basename "$0") -m DEVPATH -b DEVPATH -R SIZE -S SIZE [-H SIZE]
                         [--skip-wipe-disks]
+
+       $(basename "$0") --save-hash DEVPATH
 
        $(basename "$0") --help
 
@@ -222,6 +226,9 @@ function printHelp {
        -H, --home-size SIZE     Specify the home partition size. (Optional)
                                 (default: remaining free space after root
                                  and swap partitions)
+
+       --save-hash DEVPATH      Compute and save a checksum of the bootkey in
+                                fde-configuration.nix
 
        --skip-wipe-disks        Skip wiping disks with random data before
                                 formatting.
@@ -369,6 +376,7 @@ function toLongOption {
     '-y') echo '--version' ;;
     '-z') echo '--resume' ;;
     '-r') echo '--reset' ;;
+    '-a') echo '--save-hash' ;;
     '-m') echo '--main-disk' ;;
     '-b') echo '--boot-key' ;;
     '-R') echo '--root-size' ;;
@@ -1256,6 +1264,7 @@ for arg in "$@"; do
     '--resume') set -- "$@" '-z' ;;
     '--reset') set -- "$@" '-r' ;;
     '--root-size') set -- "$@" '-R' ;;
+    '--save-hash') set -- "$@" '-a' ;;
     '--swap-size') set -- "$@" '-S' ;;
     '--home-size') set -- "$@" '-H' ;;
     '--skip-wipe-disks') set -- "$@" '-x' ;;
@@ -1266,7 +1275,7 @@ done
 
 # Parse short option value
 OPTIND=1
-while getopts ":hm:b:R:S:H:xtyzr" short_option; do
+while getopts ":hm:b:a:R:S:H:xtyzr" short_option; do
   case "${short_option}" in
     h)
       printHelp
@@ -1288,6 +1297,16 @@ while getopts ":hm:b:R:S:H:xtyzr" short_option; do
       ;;
     x) WIPE_DISKS=false ;;
     t) RUNNING_TEST=1 ;;
+    a)
+      assert isBlockDevice "${OPTARG}" \
+        error "'${OPTARG}' is not a disk."
+      HASH="$(b3sum --no-names "${OPTARG}")"
+      awk -i inplace \
+        -v hash="${HASH}" \
+        '{ sub(/hash = "(.*)"/, "hash = \"" hash "\""); print }' \
+        /mnt/etc/nixos/fde-configuration.nix
+      exit 0
+      ;;
     y)
       printVersion
       exit 0
