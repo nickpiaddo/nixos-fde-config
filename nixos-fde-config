@@ -125,13 +125,13 @@ function printUsage {
    $(bold EXAMPLES)
 
        Configure a system with a bootkey at /dev/sdb, a main disk at /dev/sda
-       with a 16G root partition, 8G of swap, and a 64G /home partition.
+       with a 16G system partition, 8G of swap, and a 64G /home partition.
 
            $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 64G
 
        By default, not specifying the size of the home partition will allocate
        all remaining free space to it. In the example below, the home partition
-       will have size home_size = disk_size - (root_size + swap_size).
+       will have size home_size = disk_size - (system_size + swap_size).
 
            $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G
 
@@ -176,7 +176,7 @@ function printHelp {
    $(bold EXAMPLES)
 
        Configure a system with a bootkey at /dev/sdb, a main disk at /dev/sda
-       with a 16G root partition, 8G of swap, and a 64G /home partition.
+       with a 16G system partition, 8G of swap, and a 64G /home partition.
 
            $(bold "$(basename "$0")") -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 64G
 
@@ -227,7 +227,7 @@ function printHelp {
 
        -m, --main-disk DEVPATH  Specify where to install NixOS.
        -b, --boot-key  DEVPATH  Specify where to put the boot partition.
-       -R, --root-size SIZE     Specify the root partition size.
+       -R, --root-size SIZE     Specify the system partition size.
        -S, --swap-size SIZE     Specify the swap partition size.
        -H, --home-size SIZE     Specify the home partition size. (Optional)
                                 (default: remaining free space after root
@@ -250,7 +250,7 @@ function printHelp {
        DEVPATH the absolute path to a disk (e.g. /dev/sda).
 
        SIZE the integer partition size in bytes. Must be at least 8GiB for the
-       root partition. Otherwise, either 0 or at least 4MiB.
+       system partition. Otherwise, either 0 or at least 4MiB.
 
        Optional suffixes k or K (kibibyte, 1024 bytes), M (mebibyte, 1024k),
        G (gibibyte, 1024M), and T (tebibyte, 1024G) are supported.
@@ -1198,7 +1198,7 @@ function parseRootSize {
 
   size_in_bytes=$(toBytes "${size}")
   assert isAtLeast8GiB "${size_in_bytes}" \
-    error "A root partition must have at least 8GiB available. Please allocate more space."
+    error "A system partition must have at least 8GiB available. Please allocate more space."
 
   echo "${size_in_bytes}"
 }
@@ -1309,7 +1309,7 @@ following the instructions below:
      # $(bold tar) -xz -C /root -f /root/archive
  - open your LUKS container (assuming it is /dev/sda):
      # $(bold cryptsetup) open /dev/sda lukscontainer --key-file /root/luks-keyfile  --header /root/luks-header
- - mount your root partition:
+ - mount your system partition:
      # $(bold mount) /dev/mapper/vg_nixos-root /mnt
  - mount your boot partition (assuming /dev/sdc1 is your bootkey):
      # $(bold umount) /root/bootkey

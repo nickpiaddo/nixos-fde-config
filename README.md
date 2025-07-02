@@ -130,7 +130,7 @@ Look at the `EXAMPLES` to learn how to use `nixos-fde-config`.
    EXAMPLES
 
        Configure a system with a bootkey at /dev/sdb, a main disk at /dev/sda
-       with a 16G root partition, 8G of swap, and a 64G /home partition.
+       with a 16G system partition, 8G of swap, and a 64G /home partition.
 
            nixos-fde-config -b /dev/sdb -m /dev/sda -R 16G -S 8G -H 64G
 
@@ -181,7 +181,7 @@ Look at the `EXAMPLES` to learn how to use `nixos-fde-config`.
 
        -m, --main-disk DEVPATH  Specify where to install NixOS.
        -b, --boot-key  DEVPATH  Specify where to put the boot partition.
-       -R, --root-size SIZE     Specify the root partition size.
+       -R, --root-size SIZE     Specify the system partition size.
        -S, --swap-size SIZE     Specify the swap partition size.
        -H, --home-size SIZE     Specify the home partition size. (Optional)
                                 (default: remaining free space after root
@@ -204,7 +204,7 @@ Look at the `EXAMPLES` to learn how to use `nixos-fde-config`.
        DEVPATH the absolute path to a disk (e.g. /dev/sda).
 
        SIZE the integer partition size in bytes. Must be at least 8GiB for the
-       root partition. Otherwise, either 0 or at least 4MiB.
+       system partition. Otherwise, either 0 or at least 4MiB.
 
        Optional suffixes k or K (kibibyte, 1024 bytes), M (mebibyte, 1024k),
        G (gibibyte, 1024M), and T (tebibyte, 1024G) are supported.
